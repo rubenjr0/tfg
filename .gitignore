@@ -9,5 +9,11 @@ wheels/
 # Virtual environments
 .venv
 
-# ignore pt files
+# ignore artifacts and checkpoints
+data/
 **/*.pt
+.neptune/
+.ruff_cache/
+.pytest_cache/
+checkpoints/
+.env

@@ -1,6 +1,6 @@
 # TODO
+## MAIN
 - [ ] Dataset
-- [ ] "Casar" medidas
 - [ ] Modelo de estimación de incertidumbre
-- [ ] Incertidumbre del sensor
-- [ ] Integración
+- [x] Incertidumbre del sensor
+- [x] Pipeline
