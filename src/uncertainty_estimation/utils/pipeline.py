@@ -3,31 +3,32 @@ import numpy as np
 import torch
 from scipy import ndimage
 
-from .sensor import Sensor
+from uncertainty_estimation.utils import Sensor
 
 
 class Pipeline:
     def __init__(self, sensor: Sensor):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.precision = torch.float16 if torch.cuda.is_available() else torch.float32
-        self.depth_pro, _ = depth_pro.create_model_and_transforms(
-            device=self.device, precision=self.precision
-        )
+        self.depth_pro, _ = depth_pro.create_model_and_transforms(device=self.device)
         self.depth_pro.eval()
         self.depth_pro.compile()
         self.sensor = sensor
 
+    def estimate_depth(self, x: torch.Tensor) -> torch.Tensor:
+        x = x.to(self.device)
+        return self.depth_pro.infer(x)["depth"]
+
     def process_depth(
         depth: np.ndarray,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Process depth image to create a mask, edges, and laplacian.
         Args:
             depth (np.ndarray): Depth image, shape (H, W, 1).
         Returns:
-            depth (np.ndarray): Processed depth image.
             depth_edges (np.ndarray): Edges of the depth image.
             depth_laplacian (np.ndarray): Laplacian of the depth image.
+            mask (np.ndarray): Mask of the depth image.
         """
 
         mask = depth >= np.percentile(depth, 99.9)
@@ -36,7 +37,7 @@ class Pipeline:
         depth_edges = np.linalg.norm(depth_edges, axis=-1, keepdims=True)
         depth_laplacian = ndimage.laplace(depth)
         depth_laplacian = np.linalg.norm(depth_laplacian, axis=-1, keepdims=True)
-        return depth, depth_edges, depth_laplacian, mask
+        return depth_edges, depth_laplacian, mask
 
     def refine(
         mu_1: torch.Tensor, var_1: torch.Tensor, mu_2: torch.Tensor, var_2: torch.Tensor
@@ -69,16 +70,23 @@ class Pipeline:
 
 
 if __name__ == "__main__":
-    import rerun as rr
+    from uncertainty_estimation.data import ImageDepthDataset
+    from pathlib import Path
+    from tqdm import tqdm
+    from torchvision.transforms import v2 as T
 
-    rr.init("depth-pipeline", spawn=True)
-
-    depth = np.load(
-        "data/val/outdoor/scene_00022/scan_00194/00022_00194_outdoor_000_000_depth.npy"
+    t = T.Compose(
+        [
+            T.ToImage(),
+            T.ToDtype(torch.float, scale=True),
+        ]
     )
-    depth, depth_edges, depth_laplacian, mask = Pipeline.process_depth(depth)
-
-    rr.log("depth", rr.DepthImage(depth))
-    rr.log("depth_edges", rr.Tensor(depth_edges))
-    rr.log("depth_laplacian", rr.Tensor(depth_laplacian))
-    rr.log("mask", rr.Tensor(mask))
+    pipeline = Pipeline(None)
+    dataset = ImageDepthDataset(root="data/geosynth")
+    for entry in tqdm(dataset.data):
+        image = entry.rgb.read()
+        image = t(image)
+        estimated = pipeline.estimate_depth(image)
+        estimated = estimated.cpu().numpy()
+        path = Path(entry.path)
+        np.save(path / "est.npy", estimated)

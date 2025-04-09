@@ -1,73 +1,73 @@
-import glob
-import os
-import pathlib
+from pathlib import Path
 
 import numpy as np
 import torch
-from PIL import Image
+from geosynth import GeoSynth
 from torch.utils.data import Dataset
 from torchvision.transforms import v2 as T
 
-from uncertainty_estimation.utils import Pipeline, Sensor
+from uncertainty_estimation.utils import Pipeline
 
 
 class ImageDepthDataset(Dataset):
-    def __init__(self, root: str, sensor: Sensor):
+    def __init__(self, root: str):
         super().__init__()
-        root = pathlib.Path(root)
-        self.sensor = sensor
-        all_files = glob.glob(os.path.join(root, "**/*.png"), recursive=True)
-        self.image_pairs = [
-            (
-                f,
-                f.replace(".png", "_depth.npy"),
-                f.replace(".png", "_est.npy"),
-            )
-            for f in all_files
-        ]
+        self.data = GeoSynth(root, variant="demo")
         self.transform = T.Compose(
             [
                 T.ToImage(),
                 T.ToDtype(torch.float, scale=False),
-                T.Resize((128, 128)),
+                T.Resize((256, 256)),
             ]
         )
 
     def __len__(self):
-        return len(self.image_pairs)
+        return len(self.data)
 
     def __getitem__(self, idx):
-        image_path, depth_path, est_path = self.image_pairs[idx]
-        image = Image.open(image_path).convert("RGB")
-        depth = np.load(depth_path)
+        scene = self.data[idx]
+        path = Path(scene.path)
+        image = scene.rgb.read()
+        depth = scene.depth.read()
+        est = np.load(path / "est.npy")
 
-        est = torch.from_numpy(np.load(est_path))
         image = self.transform(image)
+
         depth = self.transform(depth)
-        depth_np = depth.numpy().transpose(1, 2, 0)
-        depth, depth_edges, depth_laplacian, mask = Pipeline.process_depth(depth_np)
-        depth_var = self.sensor.compute_uncertainty(depth, depth_edges)
-        depth_laplacian = torch.from_numpy(depth_laplacian).permute(2, 0, 1)
-        depth = torch.from_numpy(depth).permute(2, 0, 1)
-        depth_var = torch.from_numpy(depth_var).permute(2, 0, 1)
-        depth_edges = torch.from_numpy(depth_edges).permute(2, 0, 1)
-        mask = torch.from_numpy(mask).permute(2, 0, 1)
+        depth_edges, depth_laplacian, _ = Pipeline.process_depth(depth.permute(1, 2, 0))
+        depth_edges = self.transform(depth_edges)
+        depth_laplacian = self.transform(depth_laplacian)
+
         est = self.transform(est)
+        est_edges, est_laplacian, _ = Pipeline.process_depth(est.permute(1, 2, 0))
+        est_edges = self.transform(est_edges)
+        est_laplacian = self.transform(est_laplacian)
         return {
             "image": image,
             "depth": depth,
-            "depth_var": depth_var,
             "depth_edges": depth_edges,
             "depth_laplacian": depth_laplacian,
-            "mask": mask,
             "est": est,
+            "est_edges": est_edges,
+            "est_laplacian": est_laplacian,
         }
 
 
 if __name__ == "__main__":
-    sensor = Sensor(0.3, 20, (0.0008, 0.0016, 0.0018))
-    dataset = ImageDepthDataset(root="data/val/", sensor=sensor)
+    import rerun as rr
+
+    rr.init("depth-pipeline", spawn=True)
+    dataset = ImageDepthDataset(root="data/geosynth")
     batch = dataset[0]
 
     for k in batch.keys():
+        d = batch[k].permute(1, 2, 0)
         print(f"{k:<20} {batch[k].shape} {batch[k].dtype}")
+        rr.log(
+            k,
+            rr.Image(d)
+            if k == "image"
+            else rr.DepthImage(d)
+            if k == "est" or k == "depth"
+            else rr.Tensor(d),
+        )

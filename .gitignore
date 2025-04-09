@@ -17,3 +17,5 @@ data/
 .pytest_cache/
 checkpoints/
 .env
+*.rrd
+*.rbl

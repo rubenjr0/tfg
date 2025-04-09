@@ -1,75 +1,78 @@
 import rerun as rr
 import torch
+from lightning import LightningModule
 from torch import nn
 from torch.nn import functional as F
-from lightning import LightningModule
 
-from .unet import UNet
-from uncertainty_estimation.utils.pipeline import Pipeline
+from .layers import Encoder, SeparableConv2d
+from .convmixer import ConvMixer
 
 
 class UncertaintyEstimator(LightningModule):
     def __init__(self, in_dims: int, out_dims: int = 1):
         super().__init__()
         self.save_hyperparameters()
-        self.norm = nn.BatchNorm2d(in_dims)
-        self.model = UNet(
-            in_dims=in_dims,
+        self.rgb_encoder = Encoder(3, 32)
+        self.est_encoder = Encoder(3, 32)
+        self.merge_conv = SeparableConv2d(32, 32)
+        self.norm = nn.InstanceNorm2d(32)
+        self.model = ConvMixer(
+            in_dims=32,
+            h_dims=64,
             out_dims=out_dims,
+            depth=32,
+            kernel_size=7,
+            patch_size=7,
         )
 
-    def forward(self, x):
+    def forward(self, rgb, est):
+        in_size = rgb.shape[2:]
+        rgb = self.rgb_encoder(rgb)
+        est = self.est_encoder(est)
+        x = rgb + est
+        x = self.merge_conv(x)
         x = self.norm(x)
+        x = F.gelu(x)
         log_var = self.model(x)
+        log_var = F.interpolate(
+            log_var, size=in_size, mode="bilinear", align_corners=False
+        )
         var = log_var.clamp(-6, 6).exp()
         return var
 
     def training_step(self, batch, batch_idx):
         image = batch["image"]
-        y = batch["depth"]
-        y_var = batch["depth_var"]
+        depth = batch["depth"]
         est = batch["est"]
-        mask = batch["mask"]
+        est_edges = batch["est_edges"]
+        est_laplacian = batch["est_laplacian"]
 
-        stack = torch.cat([est * 1.0, image * 0.25], dim=1)
-        est_var = self(stack)
-        new_mu, new_var = Pipeline.refine(mu_1=y, var_1=y_var, mu_2=est, var_2=est_var)
+        stack = torch.cat([est, est_edges, est_laplacian], dim=1)
+        est_var = self(image, stack)
 
-        #
         nll_loss = torch.mean(
             (
-                F.huber_loss(est, y, reduction="none") / (2 * est_var)
+                F.huber_loss(est, depth, reduction="none") / (2 * est_var)
                 + 0.5 * est_var.log()
             )
-            * mask
         )
-
-        # The estimated variance should have a similar range as the computed variance
-        range_loss = F.huber_loss(est_var, y_var, reduction="none") * mask
-        range_loss = torch.mean(range_loss) * 0.1
-
-        # The refined mean should be close to the estimated depth
-        rec = F.mse_loss(new_mu, est)
+        diff = torch.abs(est - depth)
+        diff_loss = F.huber_loss(est_var, diff) * 0.5
 
         # regularization, penalize very large values
-        reg = torch.mean(est_var) * 0.01
+        reg = torch.mean(est_var) * 0.2
 
         # We penalize the estimated variance if it is too far from the computed variance
-        loss = nll_loss + rec + range_loss + reg
+        loss = nll_loss + diff_loss + reg
 
         rr.log("train/loss", rr.Scalar(loss.detach().cpu()))
         rr.log("train/loss/nll", rr.Scalar(nll_loss.detach().cpu()))
-        rr.log("train/loss/range", rr.Scalar(range_loss.detach().cpu()))
-        rr.log("train/loss/rec", rr.Scalar(rec.detach().cpu()))
+        rr.log("train/loss/diff", rr.Scalar(diff_loss.detach().cpu()))
 
         self.last_image = image
         self.last_est = est
         self.last_est_var = est_var
-        self.last_y = y
-        self.last_y_var = y_var
-        self.last_mask = mask
-        self.last_new_mu = new_mu
-        self.last_new_var = new_var
+        self.last_depth = depth
         return loss
 
     def on_train_epoch_end(self):
@@ -83,35 +86,19 @@ class UncertaintyEstimator(LightningModule):
             .clip(0, 255)
             .astype("uint8")
         )
-        y_img = self.last_y[0, 0].cpu().numpy()
-        y_var_img = self.last_y_var[0, 0].cpu().numpy()
-        mask_img = self.last_mask[0, 0].cpu().numpy()
+        depth_img = self.last_depth[0, 0].cpu().numpy()
         rr.log("image/", rr.Image(image))
-        rr.log("image/depth", rr.DepthImage(y_img))
-        rr.log("image/depth/var", rr.Tensor(y_var_img))
-        rr.log("image/mask", rr.Tensor(mask_img))
+        rr.log("image/depth", rr.DepthImage(depth_img))
         last_est = self.last_est[0].cpu().numpy()
         rr.log("image/est", rr.DepthImage(last_est))
         est_var_img: torch.Tensor = (
             self.last_est_var[0].squeeze().detach().cpu().numpy()
         )
         rr.log("image/est/var", rr.Tensor(est_var_img))
-        new_mu_img = self.last_new_mu[0].squeeze().detach().cpu().numpy()
-        new_var_img = self.last_new_var[0].squeeze().detach().cpu().numpy()
-        rr.log("new/mu", rr.DepthImage(new_mu_img))
-        rr.log("new/var", rr.Tensor(new_var_img))
 
     def configure_optimizers(self):
-        opt = torch.optim.RAdam(self.parameters(), lr=2e-4, weight_decay=1e-5)
-        sched = torch.optim.lr_scheduler.CosineAnnealingLR(
-            opt,
-            T_max=20,
-            eta_min=1e-6,
-        )
-        return {
-            "optimizer": opt,
-            "lr_scheduler": sched,
-        }
+        opt = torch.optim.RAdam(self.parameters(), lr=1e-2, weight_decay=1e-5)
+        return opt
 
 
 if __name__ == "__main__":
