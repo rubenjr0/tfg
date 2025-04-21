@@ -1,8 +1,9 @@
-from pathlib import Path
+from glob import glob
 
+import h5py
 import numpy as np
 import torch
-from geosynth import GeoSynth
+from PIL import Image
 from torch.utils.data import Dataset
 from torchvision.transforms import v2 as T
 
@@ -12,7 +13,17 @@ from uncertainty_estimation.utils import Pipeline
 class ImageDepthDataset(Dataset):
     def __init__(self, root: str):
         super().__init__()
-        self.data = GeoSynth(root, variant="demo")
+        all = glob(f"{root}/**/*final_preview/**", recursive=True)
+        self.paths = [
+            (
+                r,
+                r.replace("final_preview", "geometry_hdf5").replace(
+                    ".color.jpg", ".depth_meters.hdf5"
+                ),
+            )
+            for r in all
+            if ".color.jpg" in r
+        ]
         self.transform = T.Compose(
             [
                 T.ToImage(),
@@ -22,16 +33,15 @@ class ImageDepthDataset(Dataset):
         )
 
     def __len__(self):
-        return len(self.data)
+        return len(self.paths)
 
     def __getitem__(self, idx):
-        scene = self.data[idx]
-        path = Path(scene.path)
-        image = scene.rgb.read()
-        depth = scene.depth.read()
-        est = np.load(path / "est.npy")
+        rgb_path, depth_path = self.paths[idx]
+        image = Image.open(rgb_path).convert("RGB")
+        depth = h5py.File(depth_path, "r")["dataset"][:]
 
         image = self.transform(image)
+        est = np.load(rgb_path.replace("color.jpg", "est.npy"))
 
         depth = self.transform(depth)
         depth_edges, depth_laplacian, _ = Pipeline.process_depth(depth.permute(1, 2, 0))
@@ -54,20 +64,9 @@ class ImageDepthDataset(Dataset):
 
 
 if __name__ == "__main__":
-    import rerun as rr
+    dataset = ImageDepthDataset(root="data/ai_001_001/images")
+    entry = dataset[0]
 
-    rr.init("depth-pipeline", spawn=True)
-    dataset = ImageDepthDataset(root="data/geosynth")
-    batch = dataset[0]
-
-    for k in batch.keys():
-        d = batch[k].permute(1, 2, 0)
-        print(f"{k:<20} {batch[k].shape} {batch[k].dtype}")
-        rr.log(
-            k,
-            rr.Image(d)
-            if k == "image"
-            else rr.DepthImage(d)
-            if k == "est" or k == "depth"
-            else rr.Tensor(d),
-        )
+    for k in entry.keys():
+        d = entry[k].permute(1, 2, 0)
+        print(f"{k:<20} {entry[k].shape} {entry[k].dtype}")

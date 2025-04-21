@@ -12,7 +12,7 @@ def train():
     torch.set_float32_matmul_precision("medium")
     torch.manual_seed(42)
 
-    dataset = ImageDepthDataset(root="data/geosynth")
+    dataset = ImageDepthDataset(root="data/ai_001_001/images")
     dataloader = DataLoader(dataset, batch_size=16, shuffle=True, num_workers=12)
     model = UncertaintyEstimator(in_dims=8)
 

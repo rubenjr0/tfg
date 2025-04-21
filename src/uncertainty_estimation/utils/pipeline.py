@@ -71,22 +71,15 @@ class Pipeline:
 
 if __name__ == "__main__":
     from uncertainty_estimation.data import ImageDepthDataset
-    from pathlib import Path
     from tqdm import tqdm
-    from torchvision.transforms import v2 as T
 
-    t = T.Compose(
-        [
-            T.ToImage(),
-            T.ToDtype(torch.float, scale=True),
-        ]
-    )
     pipeline = Pipeline(None)
-    dataset = ImageDepthDataset(root="data/geosynth")
-    for entry in tqdm(dataset.data):
-        image = entry.rgb.read()
-        image = t(image)
+    dataset = ImageDepthDataset(root="data/ai_001_001/images")
+    for k in tqdm(range(len(dataset))):
+        entry = dataset[k]
+        rgb_path = entry["path"]
+        image = entry["image"]
         estimated = pipeline.estimate_depth(image)
         estimated = estimated.cpu().numpy()
-        path = Path(entry.path)
-        np.save(path / "est.npy", estimated)
+        path = rgb_path.replace("color.jpg", "est.npy")
+        np.save(path, estimated)
