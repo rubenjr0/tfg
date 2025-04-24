@@ -1,4 +1,5 @@
 from torch import nn
+from torch.nn import functional as F
 
 from . import layers as L
 
@@ -17,9 +18,9 @@ class UNet(nn.Module):
         self.out_conv = nn.Conv2d(32, out_dims, kernel_size=1)
 
     def forward(self, x):
-        xd1 = self.down_conv1(x)
-        xd2 = self.down_conv2(xd1)
-        xd3 = self.down_conv3(xd2)
+        xd1 = F.max_pool2d(self.down_conv1(x), 2)
+        xd2 = F.max_pool2d(self.down_conv2(xd1), 2)
+        xd3 = F.max_pool2d(self.down_conv3(xd2), 2)
 
         xu1 = self.up1(xd3) + xd2
         xu2 = self.up2(xu1) + xd1

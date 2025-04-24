@@ -13,7 +13,7 @@ def train():
     torch.manual_seed(42)
 
     dataset = ImageDepthDataset(root="data/ai_001_001/images")
-    dataloader = DataLoader(dataset, batch_size=16, shuffle=True, num_workers=12)
+    dataloader = DataLoader(dataset, batch_size=32, shuffle=True, num_workers=12)
     model = UncertaintyEstimator(in_dims=8)
 
     rr.init("uncertainty-predictor", spawn=True)
@@ -22,10 +22,11 @@ def train():
         logger=False,
         # fast_dev_run=True,
         log_every_n_steps=5,
-        max_epochs=200,
+        max_epochs=750,
         precision="16-mixed",
-        gradient_clip_val=1.0,
+        gradient_clip_val=0.5,
         callbacks=[
+            CB.LearningRateFinder(num_training_steps=200),
             CB.StochasticWeightAveraging(swa_lrs=1e-3),
         ],
     )

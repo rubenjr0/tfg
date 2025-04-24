@@ -5,25 +5,18 @@ from torch import nn
 from torch.nn import functional as F
 
 from .layers import Encoder, SeparableConv2d
-from .convmixer import ConvMixer
+from .conv_vae import ConvVAE
 
 
 class UncertaintyEstimator(LightningModule):
-    def __init__(self, in_dims: int, out_dims: int = 1):
+    def __init__(self, in_dims: int, out_dims: int = 1, lr: float = 2e-4):
         super().__init__()
         self.save_hyperparameters()
         self.rgb_encoder = Encoder(3, 32)
         self.est_encoder = Encoder(3, 32)
         self.merge_conv = SeparableConv2d(32, 32)
         self.norm = nn.InstanceNorm2d(32)
-        self.model = ConvMixer(
-            in_dims=32,
-            h_dims=64,
-            out_dims=out_dims,
-            depth=32,
-            kernel_size=7,
-            patch_size=7,
-        )
+        self.model = ConvVAE(in_dims=32, latent_dims=128)
 
     def forward(self, rgb, est):
         in_size = rgb.shape[2:]
@@ -31,14 +24,11 @@ class UncertaintyEstimator(LightningModule):
         est = self.est_encoder(est)
         x = rgb + est
         x = self.merge_conv(x)
-        x = self.norm(x)
         x = F.gelu(x)
-        log_var = self.model(x)
-        log_var = F.interpolate(
-            log_var, size=in_size, mode="bilinear", align_corners=False
-        )
-        var = log_var.clamp(-6, 6).exp()
-        return var
+        x = self.norm(x)
+        x = self.model(x)
+        x = F.interpolate(x, size=in_size, mode="bilinear", align_corners=False)
+        return x
 
     def training_step(self, batch, batch_idx):
         image = batch["image"]
@@ -48,27 +38,35 @@ class UncertaintyEstimator(LightningModule):
         est_laplacian = batch["est_laplacian"]
 
         stack = torch.cat([est, est_edges, est_laplacian], dim=1)
-        est_var = self(image, stack)
+        est_log_var = self(image, stack)
+        est_var = torch.clamp(est_log_var, -6, 6).exp()
 
         nll_loss = torch.mean(
             (
                 F.huber_loss(est, depth, reduction="none") / (2 * est_var)
-                + 0.5 * est_var.log()
+                + 0.5 * est_log_var
             )
         )
-        diff = torch.abs(est - depth)
-        diff_loss = F.huber_loss(est_var, diff) * 0.5
+        diff = (est - depth) ** 2
+        # diff_loss = F.smooth_l1_loss(est_var, diff)
+        ratio_loss = torch.mean(torch.abs(diff / est_var - 1.0))
+        diff_loss = ratio_loss
 
         # regularization, penalize very large values
-        reg = torch.mean(est_var) * 0.2
+        reg = torch.mean(torch.abs(est_log_var))
 
-        # We penalize the estimated variance if it is too far from the computed variance
+        # Apply weights to the losses
+        nll_loss = nll_loss * 1.0
+        diff_loss = diff_loss * 0.3
+        reg = reg * 0.01
+
         loss = nll_loss + diff_loss + reg
 
         rr.log("train/loss", rr.Scalar(loss.detach().cpu()))
         rr.log("train/loss/nll", rr.Scalar(nll_loss.detach().cpu()))
         rr.log("train/loss/diff", rr.Scalar(diff_loss.detach().cpu()))
 
+        self.last_diff = diff
         self.last_image = image
         self.last_est = est
         self.last_est_var = est_var
@@ -91,13 +89,17 @@ class UncertaintyEstimator(LightningModule):
         rr.log("image/depth", rr.DepthImage(depth_img))
         last_est = self.last_est[0].cpu().numpy()
         rr.log("image/est", rr.DepthImage(last_est))
+        last_diff = self.last_diff[0].cpu().numpy()
+        rr.log("image/diff", rr.Tensor(last_diff))
         est_var_img: torch.Tensor = (
             self.last_est_var[0].squeeze().detach().cpu().numpy()
         )
         rr.log("image/est/var", rr.Tensor(est_var_img))
 
     def configure_optimizers(self):
-        opt = torch.optim.RAdam(self.parameters(), lr=1e-2, weight_decay=1e-5)
+        opt = torch.optim.AdamW(
+            self.parameters(), lr=self.hparams.lr, weight_decay=1e-5
+        )
         return opt
 
 

@@ -39,20 +39,18 @@ class SeparableConvTranspose2d(nn.Module):
         x = self.pointwise(x)
         return x
 
-
 class ConvBlock(nn.Module):
     def __init__(self, in_dims: int, out_dims: int):
-        super().__init__()
+        super(ConvBlock, self).__init__()
         self.conv = SeparableConv2d(in_dims, out_dims)
         self.norm = nn.InstanceNorm2d(out_dims)
         self.drop = nn.Dropout(0.1)
 
     def forward(self, x):
         x = self.conv(x)
-        x = self.norm(x)
         x = F.gelu(x)
+        x = self.norm(x)
         x = self.drop(x)
-        x = F.max_pool2d(x, kernel_size=2)
         return x
 
 
