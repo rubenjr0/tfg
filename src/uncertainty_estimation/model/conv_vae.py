@@ -3,8 +3,6 @@ from torch import nn
 from .layers import ConvBlock
 
 
-
-
 class ConvVAE(nn.Module):
     """
     A simple feedforward neural network for flow prediction.

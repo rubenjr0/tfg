@@ -19,7 +19,7 @@ class UncertaintyEstimator(LightningModule):
         self.model = ConvVAE(in_dims=32, latent_dims=128)
 
     def forward(self, rgb, est):
-        in_size = rgb.shape[2:]
+        in_shape = rgb.shape[1:]
         rgb = self.rgb_encoder(rgb)
         est = self.est_encoder(est)
         x = rgb + est
@@ -27,7 +27,7 @@ class UncertaintyEstimator(LightningModule):
         x = F.gelu(x)
         x = self.norm(x)
         x = self.model(x)
-        x = F.interpolate(x, size=in_size, mode="bilinear", align_corners=False)
+        x = F.interpolate(x, size=in_shape, mode="bilinear", align_corners=False)
         return x
 
     def training_step(self, batch, batch_idx):

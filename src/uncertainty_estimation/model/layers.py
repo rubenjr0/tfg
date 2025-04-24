@@ -39,6 +39,7 @@ class SeparableConvTranspose2d(nn.Module):
         x = self.pointwise(x)
         return x
 
+
 class ConvBlock(nn.Module):
     def __init__(self, in_dims: int, out_dims: int):
         super(ConvBlock, self).__init__()
@@ -98,9 +99,9 @@ class Encoder(nn.Module):
 
     def forward(self, x):
         x = self.conv1(x)
+        x = F.gelu(x)
         x = self.norm1(x)
-        x = F.gelu(x)
         x = self.conv2(x)
-        x = self.norm2(x)
         x = F.gelu(x)
+        x = self.norm2(x)
         return x

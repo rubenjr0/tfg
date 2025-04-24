@@ -3,16 +3,28 @@ import numpy as np
 import torch
 from scipy import ndimage
 
+from uncertainty_estimation.model import UncertaintyEstimator
 from uncertainty_estimation.utils import Sensor
 
 
 class Pipeline:
-    def __init__(self, sensor: Sensor):
+    def __init__(self, sensor: Sensor, checkpoint_path: str):
+        self.sensor = sensor
+        print("Creating pipeline...")
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Using device: {self.device}")
+        print("Loading DepthPro...")
         self.depth_pro, _ = depth_pro.create_model_and_transforms(device=self.device)
         self.depth_pro.eval()
         self.depth_pro.compile()
-        self.sensor = sensor
+
+        print("Loading Uncertainty model...")
+        self.unc_model = UncertaintyEstimator.load_from_checkpoint(
+            checkpoint_path=checkpoint_path
+        )
+        self.unc_model.to(self.device)
+        self.unc_model.eval()
+        # self.unc_model.compile()
 
     def estimate_depth(self, x: torch.Tensor) -> torch.Tensor:
         x = x.to(self.device)
@@ -64,22 +76,60 @@ class Pipeline:
         return adjusted, var_refined
 
     def __call__(self, rgbd: np.ndarray):
-        _image = rgbd[:, :, :3]
-        depth = rgbd[:, :, 3]
-        depth, depth_edges, depth_laplacian = Pipeline.process_depth(depth)
+        image = rgbd[:, :, :3]
+        depth = rgbd[:, :, 3][:, :, np.newaxis]
+
+        print("Processing depth image...")
+        depth_edges, depth_laplacian, _ = Pipeline.process_depth(depth)
+        depth_unc = self.sensor.compute_uncertainty(depth, depth_edges)
+        depth = torch.from_numpy(depth).permute(2, 0, 1).to(self.device)
+        depth_edges = torch.from_numpy(depth_edges).permute(2, 0, 1).to(self.device)
+        depth_laplacian = (
+            torch.from_numpy(depth_laplacian).permute(2, 0, 1).to(self.device)
+        )
+        depth_unc = torch.from_numpy(depth_unc).permute(2, 0, 1).to(self.device)
+
+        print("Estimating depth...")
+        image = torch.from_numpy(image).permute(2, 0, 1).to(self.device)
+        est = self.estimate_depth(image)
+        est = est.unsqueeze(0)
+        est_np = est.cpu().numpy().transpose(1, 2, 0)
+        est_edges, est_laplacian, _ = Pipeline.process_depth(est_np)
+        est_edges = torch.from_numpy(est_edges).permute(2, 0, 1).to(self.device)
+        est_laplacian = torch.from_numpy(est_laplacian).permute(2, 0, 1).to(self.device)
+
+        print("Estimating uncertainty...")
+        x = torch.cat([est, est_edges, est_laplacian], dim=0).unsqueeze(0)
+        est_log_var = self.unc_model(image, x)
+        est_var = torch.clamp(est_log_var, -6, 6).exp()
+
+        depth = depth.squeeze()
+        depth_unc = depth_unc.squeeze()
+        est = est.squeeze()
+        est_var = est_var.squeeze()
+        mu, var = Pipeline.refine(depth, depth_unc, est, est_var)
+        print(f"mu: {mu.shape}, var: {var.shape}")
+        return mu, var
 
 
 if __name__ == "__main__":
-    from uncertainty_estimation.data import ImageDepthDataset
-    from tqdm import tqdm
+    import rerun as rr
 
-    pipeline = Pipeline(None)
+    from uncertainty_estimation.data import ImageDepthDataset
+
+    sensor = Sensor(3, 35, (0.0008, 0.0016, 0.0018))
+    pipeline = Pipeline(sensor, "checkpoints/epoch=199-step=798.ckpt")
     dataset = ImageDepthDataset(root="data/ai_001_001/images")
-    for k in tqdm(range(len(dataset))):
-        entry = dataset[k]
-        rgb_path = entry["path"]
-        image = entry["image"]
-        estimated = pipeline.estimate_depth(image)
-        estimated = estimated.cpu().numpy()
-        path = rgb_path.replace("color.jpg", "est.npy")
-        np.save(path, estimated)
+    sample = dataset[0]
+    rgb = sample["image"]
+    depth = sample["depth"]
+    rgbd = torch.cat([rgb, depth], dim=0).permute(1, 2, 0).numpy()
+    mu, var = pipeline(rgbd)
+    mu = mu.detach().cpu().numpy()
+    var = var.detach().cpu().numpy()
+
+    rr.init("uncertainty-predictor", spawn=True)
+    rr.log("rgbd/rgb", rr.Image(rgb.numpy().transpose(1, 2, 0)))
+    rr.log("rgbd/depth", rr.DepthImage(depth))
+    rr.log("refined/mu", rr.DepthImage(mu))
+    rr.log("refined/var", rr.Tensor(var))

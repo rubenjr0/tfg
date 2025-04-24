@@ -20,3 +20,4 @@ checkpoints/
 *.rrd
 *.rbl
 **/*.pdf
+*.png
