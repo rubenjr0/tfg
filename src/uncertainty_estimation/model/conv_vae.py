@@ -10,23 +10,19 @@ class ConvVAE(nn.Module):
 
     def __init__(self, in_dims: int, latent_dims: int):
         super(ConvVAE, self).__init__()
+        self.MIN_SIZE = 8
         self.in_convs = nn.Sequential(
             ConvBlock(in_dims, 32),
             nn.MaxPool2d(2),
             ConvBlock(32, 64),
             nn.MaxPool2d(2),
+            ConvBlock(64, 128),
+            nn.AdaptiveAvgPool2d((self.MIN_SIZE, self.MIN_SIZE)),
+            nn.Flatten(),
         )
 
-        self.mu = nn.Conv2d(64, latent_dims, 7)
-        self.log_var = nn.Conv2d(64, latent_dims, 7)
-
-        self.out_convs = nn.Sequential(
-            ConvBlock(latent_dims, 64 * 4),
-            nn.PixelShuffle(2),
-            ConvBlock(64, 32 * 4),
-            nn.PixelShuffle(2),
-            nn.Conv2d(32, 1, 1),
-        )
+        self.mu = nn.Linear(128 * self.MIN_SIZE**2, latent_dims)
+        self.log_var = nn.Linear(128 * self.MIN_SIZE**2, latent_dims)
 
     def forward(self, x):
         x = self.in_convs(x)
@@ -35,5 +31,5 @@ class ConvVAE(nn.Module):
         std = torch.exp(log_var * 0.5)
         eps = torch.randn_like(std)
         z = eps * std + mu
-        x = self.out_convs(z)
-        return x
+        z = z.view(z.size(0), -1, self.MIN_SIZE, self.MIN_SIZE)
+        return z

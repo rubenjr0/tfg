@@ -12,6 +12,7 @@ wheels/
 # ignore artifacts and checkpoints
 data/
 **/*.pt
+**/*.ckpt
 .neptune/
 .ruff_cache/
 .pytest_cache/

@@ -1,33 +1,31 @@
 import rerun as rr
 import torch
 from lightning import LightningModule
-from torch import nn
 from torch.nn import functional as F
+from torchvision.transforms.v2 import GaussianBlur
 
-from .layers import Encoder, SeparableConv2d
-from .conv_vae import ConvVAE
+from .layers import Encoder
+from .convmixer import ConvMixer
 
 
 class UncertaintyEstimator(LightningModule):
-    def __init__(self, in_dims: int, out_dims: int = 1, lr: float = 2e-4):
+    def __init__(self, in_dims: int, out_dims: int = 1):
         super().__init__()
         self.save_hyperparameters()
-        self.rgb_encoder = Encoder(3, 32)
-        self.est_encoder = Encoder(3, 32)
-        self.merge_conv = SeparableConv2d(32, 32)
-        self.norm = nn.InstanceNorm2d(32)
-        self.model = ConvVAE(in_dims=32, latent_dims=128)
+        self.rgb_encoder = Encoder(3, 16)
+        self.est_encoder = Encoder(3, 16)
+        self.model = ConvMixer(in_dims=16, h_dims=32, out_dims=out_dims, depth=8)
+        # Very heavy Gaussian blur
+        self.blur = GaussianBlur(kernel_size=9)
 
     def forward(self, rgb, est):
-        in_shape = rgb.shape[1:]
+        in_shape = est.shape[2:]
         rgb = self.rgb_encoder(rgb)
         est = self.est_encoder(est)
         x = rgb + est
-        x = self.merge_conv(x)
-        x = F.gelu(x)
-        x = self.norm(x)
         x = self.model(x)
         x = F.interpolate(x, size=in_shape, mode="bilinear", align_corners=False)
+        # x = self.blur(x)
         return x
 
     def training_step(self, batch, batch_idx):
@@ -47,10 +45,12 @@ class UncertaintyEstimator(LightningModule):
                 + 0.5 * est_log_var
             )
         )
-        diff = (est - depth) ** 2
-        # diff_loss = F.smooth_l1_loss(est_var, diff)
-        ratio_loss = torch.mean(torch.abs(diff / est_var - 1.0))
-        diff_loss = ratio_loss
+        diff = F.avg_pool2d((est - depth) ** 2, 4)
+        diff = self.blur(diff)
+        diff = F.interpolate(
+            diff, size=est.shape[2:], mode="bilinear", align_corners=False
+        )
+        diff_loss = F.smooth_l1_loss(est_var, diff)
 
         # regularization, penalize very large values
         reg = torch.mean(torch.abs(est_log_var))
@@ -74,6 +74,8 @@ class UncertaintyEstimator(LightningModule):
         return loss
 
     def on_train_epoch_end(self):
+        if (self.trainer.global_step - 1) % 10 != 0:
+            return
         image = (
             self.last_image[0]
             .squeeze()
@@ -97,14 +99,20 @@ class UncertaintyEstimator(LightningModule):
         rr.log("image/est/var", rr.Tensor(est_var_img))
 
     def configure_optimizers(self):
-        opt = torch.optim.AdamW(
-            self.parameters(), lr=self.hparams.lr, weight_decay=1e-5
+        opt = torch.optim.AdamW(self.parameters(), lr=2e-4, weight_decay=1e-5)
+        sched = torch.optim.lr_scheduler.CosineAnnealingLR(
+            opt,
+            T_max=self.trainer.estimated_stepping_batches,
+            eta_min=1e-7,
         )
-        return opt
+        return {
+            "optimizer": opt,
+            "lr_scheduler": sched,
+        }
 
 
 if __name__ == "__main__":
-    model = UncertaintyEstimator(6)
-    x = torch.randn(2, 5, 256, 256)
+    model = UncertaintyEstimator(8)
+    x = torch.randn(2, 8, 256, 256)
     y = model(x)
     print(y.shape)

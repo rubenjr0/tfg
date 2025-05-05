@@ -118,7 +118,7 @@ if __name__ == "__main__":
     from uncertainty_estimation.data import ImageDepthDataset
 
     sensor = Sensor(3, 35, (0.0008, 0.0016, 0.0018))
-    pipeline = Pipeline(sensor, "checkpoints/epoch=199-step=798.ckpt")
+    pipeline = Pipeline(sensor, "checkpoints/epoch=749-step=3000-v1.ckpt")
     dataset = ImageDepthDataset(root="data/ai_001_001/images")
     sample = dataset[0]
     rgb = sample["image"]

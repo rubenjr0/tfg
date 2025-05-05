@@ -49,8 +49,8 @@ class ConvBlock(nn.Module):
 
     def forward(self, x):
         x = self.conv(x)
-        x = F.gelu(x)
         x = self.norm(x)
+        x = F.gelu(x)
         x = self.drop(x)
         return x
 
@@ -99,9 +99,9 @@ class Encoder(nn.Module):
 
     def forward(self, x):
         x = self.conv1(x)
-        x = F.gelu(x)
         x = self.norm1(x)
-        x = self.conv2(x)
         x = F.gelu(x)
+        x = self.conv2(x)
         x = self.norm2(x)
+        x = F.gelu(x)
         return x
