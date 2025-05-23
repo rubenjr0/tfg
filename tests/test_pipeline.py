@@ -1,5 +1,5 @@
 import torch
-from uncertainty_estimation.utils.pipeline import Pipeline
+from uncertainty_estimation.utils.pipeline import refine
 
 
 def test_refine():
@@ -7,7 +7,7 @@ def test_refine():
     var1 = torch.rand(1, 1, 128, 128)
     mu2 = torch.rand(1, 1, 128, 128)
     var2 = torch.rand(1, 1, 128, 128)
-    mu_refined, var_refined = Pipeline.refine(mu1, var1, mu2, var2)
+    mu_refined, var_refined = refine(mu1, var1, mu2, var2)
     assert mu_refined.shape == mu1.shape
     assert var_refined.shape == var1.shape
     assert var_refined.mean() < var1.mean()

@@ -5,76 +5,85 @@ from torch.nn import functional as F
 from torchvision.transforms.v2 import GaussianBlur
 
 from .layers import Encoder
-from .convmixer import ConvMixer
+
+# from .convmixer import ConvMixer
+# from .unet import UNet
+from .conv_vae import ConvVAE
 
 
 class UncertaintyEstimator(LightningModule):
-    def __init__(self, in_dims: int, out_dims: int = 1):
+    def __init__(self):
         super().__init__()
         self.save_hyperparameters()
         self.rgb_encoder = Encoder(3, 16)
         self.est_encoder = Encoder(3, 16)
-        self.model = ConvMixer(in_dims=16, h_dims=32, out_dims=out_dims, depth=8)
-        # Very heavy Gaussian blur
-        self.blur = GaussianBlur(kernel_size=9)
+        # self.model = ConvMixer()
+        # self.model = UNet(in_dims=32, out_dims=1)
+        self.model = ConvVAE(in_dims=32, latent_dims=512, out_dims=1)
+        self.pool = torch.nn.AdaptiveAvgPool2d((32, 32))
+        self.blur = GaussianBlur(kernel_size=(5, 5), sigma=1.2)
+
+    def blur_scale(self, x, shape):
+        x = self.blur(x)
+        x = F.interpolate(x, size=shape, mode="bilinear", align_corners=False)
+        return x
 
     def forward(self, rgb, est):
         in_shape = est.shape[2:]
         rgb = self.rgb_encoder(rgb)
         est = self.est_encoder(est)
-        x = rgb + est
+        x = torch.cat([rgb, est], dim=1)
         x = self.model(x)
-        x = F.interpolate(x, size=in_shape, mode="bilinear", align_corners=False)
-        # x = self.blur(x)
+        x = self.pool(x)
+        x = self.blur_scale(x, in_shape).clamp(-3, 3).exp()
         return x
 
-    def training_step(self, batch, batch_idx):
+    def training_step(self, batch, _batch_idx):
         image = batch["image"]
         depth = batch["depth"]
-        est = batch["est"]
-        est_edges = batch["est_edges"]
-        est_laplacian = batch["est_laplacian"]
+        depth_edges = batch["depth_edges"]
+        depth_laplacian = batch["depth_laplacian"]
+        observation = batch["est"]
+        observation_edges = batch["est_edges"]
+        observation_laplacian = batch["est_laplacian"]
 
-        stack = torch.cat([est, est_edges, est_laplacian], dim=1)
-        est_log_var = self(image, stack)
-        est_var = torch.clamp(est_log_var, -6, 6).exp()
+        observation_stack = torch.cat(
+            [observation, observation_edges, observation_laplacian], dim=1
+        )
+        reference_stack = torch.cat([depth, depth_edges, depth_laplacian], dim=1)
+        estimated_variance = self(image, observation_stack)
+        reference_variance = self(image, reference_stack)
 
-        nll_loss = torch.mean(
-            (
-                F.huber_loss(est, depth, reduction="none") / (2 * est_var)
-                + 0.5 * est_log_var
-            )
+        eps = 1e-6
+        difference = (depth - observation) ** 2
+        estimated_nll_loss = torch.mean(
+            0.5 * torch.log(2 * torch.pi * (estimated_variance + eps))
+            + difference / (2 * (estimated_variance + eps))
         )
-        diff = F.avg_pool2d((est - depth) ** 2, 4)
-        diff = self.blur(diff)
-        diff = F.interpolate(
-            diff, size=est.shape[2:], mode="bilinear", align_corners=False
+        reference_nll_loss = torch.mean(
+            0.5 * torch.log(2 * torch.pi * (reference_variance + eps))
         )
-        diff_loss = F.smooth_l1_loss(est_var, diff)
 
         # regularization, penalize very large values
-        reg = torch.mean(torch.abs(est_log_var))
+        reg = torch.mean(torch.abs(estimated_variance)) * 0.01
 
-        # Apply weights to the losses
-        nll_loss = nll_loss * 1.0
-        diff_loss = diff_loss * 0.3
-        reg = reg * 0.01
-
-        loss = nll_loss + diff_loss + reg
+        alpha = 1.0
+        beta = 0.1
+        loss = alpha * estimated_nll_loss + beta * reference_nll_loss + reg
 
         rr.log("train/loss", rr.Scalar(loss.detach().cpu()))
-        rr.log("train/loss/nll", rr.Scalar(nll_loss.detach().cpu()))
-        rr.log("train/loss/diff", rr.Scalar(diff_loss.detach().cpu()))
+        # rr.log("train/loss/nll", rr.Scalar(nll_loss.detach().cpu()))
+        # rr.log("train/loss/diff", rr.Scalar(diff_loss.detach().cpu()))
 
-        self.last_diff = diff
         self.last_image = image
-        self.last_est = est
-        self.last_est_var = est_var
+        self.last_obs = observation
+        self.last_est_var = estimated_variance
+        self.last_ref_var = reference_variance
         self.last_depth = depth
         return loss
 
     def on_train_epoch_end(self):
-        if (self.trainer.global_step - 1) % 10 != 0:
+        if self.trainer.current_epoch % 5 != 0:
             return
         image = (
             self.last_image[0]
@@ -89,26 +98,26 @@ class UncertaintyEstimator(LightningModule):
         depth_img = self.last_depth[0, 0].cpu().numpy()
         rr.log("image/", rr.Image(image))
         rr.log("image/depth", rr.DepthImage(depth_img))
-        last_est = self.last_est[0].cpu().numpy()
-        rr.log("image/est", rr.DepthImage(last_est))
-        last_diff = self.last_diff[0].cpu().numpy()
-        rr.log("image/diff", rr.Tensor(last_diff))
+        last_obs = self.last_obs[0].cpu().numpy()
+        rr.log("image/est", rr.DepthImage(last_obs))
         est_var_img: torch.Tensor = (
             self.last_est_var[0].squeeze().detach().cpu().numpy()
         )
         rr.log("image/est/var", rr.Tensor(est_var_img))
+        ref_var_img: torch.Tensor = (
+            self.last_ref_var[0].squeeze().detach().cpu().numpy()
+        )
+        rr.log("image/ref/var", rr.Tensor(ref_var_img))
 
     def configure_optimizers(self):
-        opt = torch.optim.AdamW(self.parameters(), lr=2e-4, weight_decay=1e-5)
-        sched = torch.optim.lr_scheduler.CosineAnnealingLR(
+        opt = torch.optim.AdamW(self.parameters(), lr=1e-3, weight_decay=1e-5)
+        sched = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
             opt,
-            T_max=self.trainer.estimated_stepping_batches,
-            eta_min=1e-7,
+            T_0=self.trainer.estimated_stepping_batches // 5,
+            T_mult=1,
+            eta_min=1e-6,
         )
-        return {
-            "optimizer": opt,
-            "lr_scheduler": sched,
-        }
+        return {"optimizer": opt, "scheduler": sched}
 
 
 if __name__ == "__main__":

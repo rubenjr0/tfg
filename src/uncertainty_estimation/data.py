@@ -7,7 +7,7 @@ from PIL import Image
 from torch.utils.data import Dataset
 from torchvision.transforms import v2 as T
 
-from uncertainty_estimation.utils import Pipeline
+from uncertainty_estimation.utils import process_depth
 
 
 class ImageDepthDataset(Dataset):
@@ -44,12 +44,12 @@ class ImageDepthDataset(Dataset):
         est = np.load(rgb_path.replace("color.jpg", "est.npy"))
 
         depth = self.transform(depth)
-        depth_edges, depth_laplacian, _ = Pipeline.process_depth(depth.permute(1, 2, 0))
+        depth_edges, depth_laplacian, _ = process_depth(depth.permute(1, 2, 0))
         depth_edges = self.transform(depth_edges)
         depth_laplacian = self.transform(depth_laplacian)
 
         est = self.transform(est)
-        est_edges, est_laplacian, _ = Pipeline.process_depth(est.permute(1, 2, 0))
+        est_edges, est_laplacian, _ = process_depth(est.permute(1, 2, 0))
         est_edges = self.transform(est_edges)
         est_laplacian = self.transform(est_laplacian)
         return {

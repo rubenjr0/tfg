@@ -6,7 +6,7 @@ if __name__ == "__main__":
     from uncertainty_estimation.data import ImageDepthDataset
     from tqdm import tqdm
 
-    pipeline = Pipeline(None)
+    pipeline = Pipeline(None, None)
     dataset = ImageDepthDataset(root="data/ai_001_001/images")
     for k in tqdm(range(len(dataset))):
         entry = dataset[k]

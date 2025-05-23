@@ -16,13 +16,15 @@ class Sensor:
         self.linear_coeff = coefs[1]
         self.quadratic_coeff = coefs[2]
 
-    def compute_uncertainty_batch(self, depth: np.ndarray) -> np.ndarray:
+    def compute_uncertainty_batch(
+        self, depths: np.ndarray, edges: np.ndarray
+    ) -> np.ndarray:
         """
         Compute the uncertainty of a batch of depth images.
         Args:
             depth (np.ndarray): The depth images to compute uncertainty for. (N, H, W, 1)
         """
-        uncs = [self.compute_uncertainty(d) for d in depth]
+        uncs = [self.compute_uncertainty(d, e) for (d, e) in zip(depths, edges)]
         return np.stack(uncs, axis=0)
 
     def compute_uncertainty(self, depth: np.ndarray, edges: np.ndarray) -> np.ndarray:
@@ -47,7 +49,10 @@ class Sensor:
 
 
 if __name__ == "__main__":
+    from . import process_depth
+
     sensor = Sensor(3, 35, (0.0008, 0.0016, 0.0018))
     depth = np.random.rand(1, 256, 256).astype(np.float32)
-    uncertainty = sensor.compute_uncertainty(depth)
+    edges, _, _ = process_depth(depth)
+    uncertainty = sensor.compute_uncertainty(depth, edges)
     print(uncertainty.shape)

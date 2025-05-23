@@ -45,12 +45,13 @@ class ConvBlock(nn.Module):
         super(ConvBlock, self).__init__()
         self.conv = SeparableConv2d(in_dims, out_dims)
         self.norm = nn.InstanceNorm2d(out_dims)
+        self.act = nn.GELU()
         self.drop = nn.Dropout(0.1)
 
     def forward(self, x):
         x = self.conv(x)
         x = self.norm(x)
-        x = F.gelu(x)
+        x = self.act(x)
         x = self.drop(x)
         return x
 
@@ -73,6 +74,7 @@ class UpscalingBlock(nn.Module):
             out_dims,
         )
         self.norm = nn.InstanceNorm2d(out_dims)
+        self.act = nn.GELU()
 
     def forward(self, x):
         x = self.upsample(x)
@@ -81,7 +83,7 @@ class UpscalingBlock(nn.Module):
         x = self.downsample(x) + res
         x = self.out_conv(x)
         x = self.norm(x)
-        x = F.gelu(x)
+        x = self.act(x)
         return x
 
 
@@ -94,14 +96,16 @@ class Encoder(nn.Module):
         super().__init__()
         self.conv1 = SeparableConv2d(in_dims, out_dims)
         self.norm1 = nn.InstanceNorm2d(out_dims)
+        self.act1 = nn.GELU()
         self.conv2 = SeparableConv2d(out_dims, out_dims)
         self.norm2 = nn.InstanceNorm2d(out_dims)
+        self.act2 = nn.GELU()
 
     def forward(self, x):
         x = self.conv1(x)
         x = self.norm1(x)
-        x = F.gelu(x)
+        x = self.act1(x)
         x = self.conv2(x)
         x = self.norm2(x)
-        x = F.gelu(x)
+        x = self.act2(x)
         return x
