@@ -11,8 +11,17 @@ from uncertainty_estimation.utils import process_depth
 
 
 class ImageDepthDataset(Dataset):
-    def __init__(self, root: str):
+    def __init__(
+        self,
+        root: str,
+        use_noise_augmentation: bool = True,
+        noise_mean: float = 0.0,
+        noise_std_range: tuple = (0.01, 0.1),
+    ):
         super().__init__()
+        self.use_noise_augmentation = use_noise_augmentation
+        self.noise_mean = noise_mean
+        self.noise_std_range = noise_std_range
         all = glob(f"{root}/**/*final_preview/**", recursive=True)
         self.paths = [
             (
@@ -48,6 +57,16 @@ class ImageDepthDataset(Dataset):
         depth_edges = self.transform(depth_edges)
         depth_laplacian = self.transform(depth_laplacian)
 
+        noise_std = (
+            torch.rand(1).item() * (self.noise_std_range[1] - self.noise_std_range[0])
+            + self.noise_std_range[0]
+        )
+        noise = torch.randn_like(depth) * noise_std + self.noise_mean
+        noisy_depth = depth + noise
+        noisy_edges, noisy_laplacian, _ = process_depth(noisy_depth.permute(1, 2, 0))
+        noisy_edges = self.transform(noisy_edges)
+        noisy_laplacian = self.transform(noisy_laplacian)
+
         est = self.transform(est)
         est_edges, est_laplacian, _ = process_depth(est.permute(1, 2, 0))
         est_edges = self.transform(est_edges)
@@ -60,6 +79,10 @@ class ImageDepthDataset(Dataset):
             "est": est,
             "est_edges": est_edges,
             "est_laplacian": est_laplacian,
+            "noise_std": noise_std,
+            "noisy_depth": noisy_depth,
+            "noisy_edges": noisy_edges,
+            "noisy_laplacian": noisy_laplacian,
         }
 
 

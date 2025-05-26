@@ -4,6 +4,7 @@ from lightning import LightningModule
 from torch.nn import functional as F
 from torchvision.transforms.v2 import GaussianBlur
 
+
 from .layers import Encoder
 
 # from .convmixer import ConvMixer
@@ -15,10 +16,10 @@ class UncertaintyEstimator(LightningModule):
     def __init__(self):
         super().__init__()
         self.save_hyperparameters()
-        self.rgb_encoder = Encoder(3, 16)
-        self.est_encoder = Encoder(3, 16)
         # self.model = ConvMixer()
         # self.model = UNet(in_dims=32, out_dims=1)
+        self.rgb_encoder = Encoder(in_dims=3, out_dims=16)
+        self.stack_encoder = Encoder(in_dims=3, out_dims=16)
         self.model = ConvVAE(in_dims=32, latent_dims=512, out_dims=1)
         self.pool = torch.nn.AdaptiveAvgPool2d((32, 32))
         self.blur = GaussianBlur(kernel_size=(5, 5), sigma=1.2)
@@ -28,15 +29,28 @@ class UncertaintyEstimator(LightningModule):
         x = F.interpolate(x, size=shape, mode="bilinear", align_corners=False)
         return x
 
-    def forward(self, rgb, est):
-        in_shape = est.shape[2:]
+    def forward(self, rgb, depth, depth_edges, depth_laplacian):
+        in_shape = rgb.shape[2:]
+        stack = torch.cat([depth, depth_edges, depth_laplacian], dim=1)
         rgb = self.rgb_encoder(rgb)
-        est = self.est_encoder(est)
-        x = torch.cat([rgb, est], dim=1)
+        stack = self.stack_encoder(stack)
+        x = torch.cat([rgb, stack], dim=1)
         x = self.model(x)
         x = self.pool(x)
         x = self.blur_scale(x, in_shape).clamp(-3, 3).exp()
         return x
+
+    def nll_loss(self, estimated_variance, target, eps=1e-6):
+        nll_loss = torch.mean(
+            0.5 * torch.log(2 * torch.pi * (estimated_variance + eps))
+            + target / (2 * (estimated_variance + eps))
+        )
+        return nll_loss
+
+    def total_variance_loss(self, variance_map):
+        return torch.mean(
+            (variance_map[:, :, 1:, :] - variance_map[:, :, :-1, :]) ** 2
+        ) + torch.mean((variance_map[:, :, :, 1:] - variance_map[:, :, :, :-1]) ** 2)
 
     def training_step(self, batch, _batch_idx):
         image = batch["image"]
@@ -46,30 +60,48 @@ class UncertaintyEstimator(LightningModule):
         observation = batch["est"]
         observation_edges = batch["est_edges"]
         observation_laplacian = batch["est_laplacian"]
+        noise_std = batch["noise_std"]
+        noisy_depth = batch["noisy_depth"]
+        noisy_edges = batch["noisy_edges"]
+        noisy_laplace = batch["noisy_laplacian"]
 
-        observation_stack = torch.cat(
-            [observation, observation_edges, observation_laplacian], dim=1
+        estimated_variance = self(
+            image, observation, observation_edges, observation_laplacian
         )
-        reference_stack = torch.cat([depth, depth_edges, depth_laplacian], dim=1)
-        estimated_variance = self(image, observation_stack)
-        reference_variance = self(image, reference_stack)
+        reference_variance = self(image, depth, depth_edges, depth_laplacian)
+        noisy_variance = self(image, noisy_depth, noisy_edges, noisy_laplace)
 
-        eps = 1e-6
         difference = (depth - observation) ** 2
-        estimated_nll_loss = torch.mean(
-            0.5 * torch.log(2 * torch.pi * (estimated_variance + eps))
-            + difference / (2 * (estimated_variance + eps))
+
+        # Estimated depth variance loss
+        estimated_nll_loss = self.nll_loss(estimated_variance, difference)
+
+        # Ground truth depth variance loss (should be close to zero)
+        reference_nll_loss = self.nll_loss(
+            reference_variance, torch.zeros_like(difference)
         )
-        reference_nll_loss = torch.mean(
-            0.5 * torch.log(2 * torch.pi * (reference_variance + eps))
-        )
+
+        # Noisy depth variance loss (should be close to the noise variance)
+        target_noisy_variance = (noise_std**2).view(-1, 1, 1, 1)
+        noisy_nll_loss = self.nll_loss(noisy_variance, target_noisy_variance)
 
         # regularization, penalize very large values
-        reg = torch.mean(torch.abs(estimated_variance)) * 0.01
+        reg = torch.mean(torch.abs(estimated_variance))
 
-        alpha = 1.0
-        beta = 0.1
-        loss = alpha * estimated_nll_loss + beta * reference_nll_loss + reg
+        tv_loss = self.total_variance_loss(estimated_variance)
+
+        estimated_w = 1.0
+        reference_w = 0.1
+        noisy_w = 0.4
+        tv_w = 0.05
+        reg_w = 0.01
+        loss = (
+            estimated_w * estimated_nll_loss
+            + reference_w * reference_nll_loss
+            + noisy_w * noisy_nll_loss
+            + tv_w * tv_loss
+            + reg_w * reg
+        )
 
         rr.log("train/loss", rr.Scalar(loss.detach().cpu()))
         # rr.log("train/loss/nll", rr.Scalar(nll_loss.detach().cpu()))
@@ -113,7 +145,7 @@ class UncertaintyEstimator(LightningModule):
         opt = torch.optim.AdamW(self.parameters(), lr=1e-3, weight_decay=1e-5)
         sched = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
             opt,
-            T_0=self.trainer.estimated_stepping_batches // 5,
+            T_0=self.trainer.estimated_stepping_batches // 4,
             T_mult=1,
             eta_min=1e-6,
         )
