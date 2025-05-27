@@ -14,11 +14,13 @@ class ImageDepthDataset(Dataset):
     def __init__(
         self,
         root: str,
+        preprocess: bool = False,
         use_noise_augmentation: bool = True,
         noise_mean: float = 0.0,
-        noise_std_range: tuple = (0.01, 0.1),
+        noise_std_range: tuple = (0.05, 0.2),
     ):
         super().__init__()
+        self.preprocess = preprocess
         self.use_noise_augmentation = use_noise_augmentation
         self.noise_mean = noise_mean
         self.noise_std_range = noise_std_range
@@ -48,42 +50,53 @@ class ImageDepthDataset(Dataset):
         rgb_path, depth_path = self.paths[idx]
         image = Image.open(rgb_path).convert("RGB")
         depth = h5py.File(depth_path, "r")["dataset"][:]
+        if np.isnan(image).any() or np.isnan(depth).any():
+            return self.__getitem__((idx + 1) % len(self))
 
         image = self.transform(image)
-        est = np.load(rgb_path.replace("color.jpg", "est.npy"))
 
         depth = self.transform(depth)
         depth_edges, depth_laplacian, _ = process_depth(depth.permute(1, 2, 0))
         depth_edges = self.transform(depth_edges)
         depth_laplacian = self.transform(depth_laplacian)
 
-        noise_std = (
-            torch.rand(1).item() * (self.noise_std_range[1] - self.noise_std_range[0])
-            + self.noise_std_range[0]
-        )
-        noise = torch.randn_like(depth) * noise_std + self.noise_mean
-        noisy_depth = depth + noise
-        noisy_edges, noisy_laplacian, _ = process_depth(noisy_depth.permute(1, 2, 0))
-        noisy_edges = self.transform(noisy_edges)
-        noisy_laplacian = self.transform(noisy_laplacian)
-
-        est = self.transform(est)
-        est_edges, est_laplacian, _ = process_depth(est.permute(1, 2, 0))
-        est_edges = self.transform(est_edges)
-        est_laplacian = self.transform(est_laplacian)
-        return {
+        output = {
+            "image_path": rgb_path,
             "image": image,
             "depth": depth,
             "depth_edges": depth_edges,
             "depth_laplacian": depth_laplacian,
-            "est": est,
-            "est_edges": est_edges,
-            "est_laplacian": est_laplacian,
-            "noise_std": noise_std,
-            "noisy_depth": noisy_depth,
-            "noisy_edges": noisy_edges,
-            "noisy_laplacian": noisy_laplacian,
         }
+
+        if not self.preprocess:
+            est = np.load(rgb_path.replace("color.jpg", "est.npy"))
+            est = self.transform(est)
+            est_edges, est_laplacian, _ = process_depth(est.permute(1, 2, 0))
+            est_edges = self.transform(est_edges)
+            est_laplacian = self.transform(est_laplacian)
+
+            noise_std = (
+                torch.rand(1).item()
+                * (self.noise_std_range[1] - self.noise_std_range[0])
+                + self.noise_std_range[0]
+            )
+            noise = torch.randn_like(depth) * noise_std + self.noise_mean
+            noisy_depth = depth + noise
+            noisy_edges, noisy_laplacian, _ = process_depth(
+                noisy_depth.permute(1, 2, 0)
+            )
+            noisy_edges = self.transform(noisy_edges)
+            noisy_laplacian = self.transform(noisy_laplacian)
+
+            output["est"] = est
+            output["est_edges"] = est_edges
+            output["est_laplacian"] = est_laplacian
+            output["noise_std"] = noise_std
+            output["noisy_depth"] = noisy_depth
+            output["noisy_edges"] = noisy_edges
+            output["noisy_laplacian"] = noisy_laplacian
+
+        return output
 
 
 if __name__ == "__main__":

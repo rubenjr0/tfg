@@ -47,8 +47,8 @@ def refine(
     mu_refined = (mu_1 * var_2 + mu_2 * var_1) / (var_1 + var_2)
     var_refined = 1.0 / (1.0 / var_1 + 1.0 / var_2)
     mu_diff = torch.abs(mu_1 - mu_2)
-    conssitency = torch.exp(-(mu_diff**2) / (2 * (var_1 + var_2)))
-    adjusted = conssitency * mu_refined + (1 - conssitency) * torch.minimum(mu_1, mu_2)
+    consistency = torch.exp(-mu_diff.pow(2) / (2 * (var_1 + var_2)))
+    adjusted = consistency * mu_refined + (1 - consistency) * torch.minimum(mu_1, mu_2)
     return adjusted, var_refined
 
 

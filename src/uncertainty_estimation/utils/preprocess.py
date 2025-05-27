@@ -1,16 +1,16 @@
 import numpy as np
 
 from uncertainty_estimation.utils import Pipeline
+from uncertainty_estimation.data import ImageDepthDataset
+from tqdm import tqdm
 
-if __name__ == "__main__":
-    from uncertainty_estimation.data import ImageDepthDataset
-    from tqdm import tqdm
 
+def preprocess():
     pipeline = Pipeline(None, None)
-    dataset = ImageDepthDataset(root="data/ai_001_001/images")
+    dataset = ImageDepthDataset(root="data/", preprocess=True)
     for k in tqdm(range(len(dataset))):
         entry = dataset[k]
-        rgb_path = entry["path"]
+        rgb_path = entry["image_path"]
         image = entry["image"]
         estimated = pipeline.estimate_depth(image)
         estimated = estimated.cpu().numpy()

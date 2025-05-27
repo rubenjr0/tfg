@@ -1,3 +1,4 @@
+import torch
 from torch import nn
 from torch.nn import functional as F
 
@@ -67,6 +68,7 @@ class UpscalingBlock(nn.Module):
         self.downsample = nn.Conv2d(
             in_dims * 4,
             in_dims,
+            groups=4,
             kernel_size=1,
         )
         self.out_conv = SeparableConv2d(
@@ -76,7 +78,7 @@ class UpscalingBlock(nn.Module):
         self.norm = nn.InstanceNorm2d(out_dims)
         self.act = nn.GELU()
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.upsample(x)
         res = self.up_res(x)
         x = F.interpolate(x, scale_factor=2, mode="bilinear", align_corners=False)
@@ -101,7 +103,7 @@ class Encoder(nn.Module):
         self.norm2 = nn.InstanceNorm2d(out_dims)
         self.act2 = nn.GELU()
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.conv1(x)
         x = self.norm1(x)
         x = self.act1(x)

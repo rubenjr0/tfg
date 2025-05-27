@@ -12,6 +12,7 @@ dependencies = [
     "h5py>=3.13.0",
     "lightning>=2.5.1",
     "neptune>=1.13.0",
+    "ranger21",
     "rerun-sdk>=0.22.1",
     "scipy>=1.15.2",
     "torch>=2.6.0",
@@ -20,6 +21,7 @@ dependencies = [
 
 [project.scripts]
 train = "uncertainty_estimation:train"
+preprocess = "uncertainty_estimation:preprocess"
 
 [dependency-groups]
 dev = [
@@ -29,6 +31,7 @@ dev = [
 
 [tool.uv.sources]
 depth-pro = { git = "https://github.com/apple/ml-depth-pro" }
+ranger21 = { git = "https://github.com/lessw2020/Ranger21.git" }
 
 [build-system]
 requires = ["hatchling"]
