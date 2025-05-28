@@ -15,15 +15,9 @@ class ImageDepthDataset(Dataset):
         self,
         root: str,
         preprocess: bool = False,
-        use_noise_augmentation: bool = True,
-        noise_mean: float = 0.0,
-        noise_std_range: tuple = (0.05, 0.2),
     ):
         super().__init__()
         self.preprocess = preprocess
-        self.use_noise_augmentation = use_noise_augmentation
-        self.noise_mean = noise_mean
-        self.noise_std_range = noise_std_range
         all = glob(f"{root}/**/*final_preview/**", recursive=True)
         self.paths = [
             (
@@ -75,27 +69,9 @@ class ImageDepthDataset(Dataset):
             est_edges = self.transform(est_edges)
             est_laplacian = self.transform(est_laplacian)
 
-            noise_std = (
-                torch.rand(1).item()
-                * (self.noise_std_range[1] - self.noise_std_range[0])
-                + self.noise_std_range[0]
-            )
-            noise = torch.randn_like(depth) * noise_std + self.noise_mean
-            noisy_depth = depth + noise
-            noisy_edges, noisy_laplacian, _ = process_depth(
-                noisy_depth.permute(1, 2, 0)
-            )
-            noisy_edges = self.transform(noisy_edges)
-            noisy_laplacian = self.transform(noisy_laplacian)
-
             output["est"] = est
             output["est_edges"] = est_edges
             output["est_laplacian"] = est_laplacian
-            output["noise_std"] = noise_std
-            output["noisy_depth"] = noisy_depth
-            output["noisy_edges"] = noisy_edges
-            output["noisy_laplacian"] = noisy_laplacian
-
         return output
 
 

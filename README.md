@@ -1,9 +1,10 @@
 # TODO
 ## MAIN
-- [ ] Dataset
-- [ ] Modelo de estimación de incertidumbre
-- [x] Incertidumbre del sensor
+- [x] Dataset
+- [x] Modelo de estimación de incertidumbre
 - [x] Pipeline
+
+Idea: Predecir offset/media además de la varianza?
 
 ## Dataset
 ### Synthetic data

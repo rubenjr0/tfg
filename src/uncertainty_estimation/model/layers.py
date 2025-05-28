@@ -45,8 +45,8 @@ class ConvBlock(nn.Module):
     def __init__(self, in_dims: int, out_dims: int):
         super(ConvBlock, self).__init__()
         self.conv = SeparableConv2d(in_dims, out_dims)
-        self.norm = nn.InstanceNorm2d(out_dims)
-        self.act = nn.GELU()
+        self.norm = nn.BatchNorm2d(out_dims)
+        self.act = nn.SiLU()
         self.drop = nn.Dropout(0.1)
 
     def forward(self, x):
@@ -60,30 +60,21 @@ class ConvBlock(nn.Module):
 class UpscalingBlock(nn.Module):
     def __init__(self, in_dims: int, out_dims: int):
         super().__init__()
-        self.upsample = nn.Conv2d(in_dims, in_dims * 4, kernel_size=1)
-        self.up_res = SeparableConvTranspose2d(
-            in_dims * 4,
-            in_dims,
-        )
-        self.downsample = nn.Conv2d(
-            in_dims * 4,
-            in_dims,
-            groups=4,
-            kernel_size=1,
-        )
-        self.out_conv = SeparableConv2d(
-            in_dims,
-            out_dims,
-        )
-        self.norm = nn.InstanceNorm2d(out_dims)
-        self.act = nn.GELU()
+        self.shuffle_proj = SeparableConv2d(in_dims, out_dims * 4)
+        self.bil_proj = SeparableConv2d(in_dims, out_dims)
+        self.shuffle = nn.PixelShuffle(2)
+        self.alpha = nn.Parameter(torch.tensor(0.5))
+        self.norm = nn.BatchNorm2d(out_dims)
+        self.act = nn.SiLU()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.upsample(x)
-        res = self.up_res(x)
-        x = F.interpolate(x, scale_factor=2, mode="bilinear", align_corners=False)
-        x = self.downsample(x) + res
-        x = self.out_conv(x)
+        bil = self.bil_proj(x)
+        bil = F.interpolate(bil, scale_factor=2, mode="bilinear", align_corners=False)
+
+        shuffle = self.shuffle_proj(x)
+        shuffle = self.shuffle(shuffle)
+
+        x = self.alpha * shuffle + (1 - self.alpha) * bil
         x = self.norm(x)
         x = self.act(x)
         return x
@@ -97,11 +88,11 @@ class Encoder(nn.Module):
     def __init__(self, in_dims: int, out_dims: int):
         super().__init__()
         self.conv1 = SeparableConv2d(in_dims, out_dims)
-        self.norm1 = nn.InstanceNorm2d(out_dims)
-        self.act1 = nn.GELU()
+        self.norm1 = nn.BatchNorm2d(out_dims)
+        self.act1 = nn.SiLU()
         self.conv2 = SeparableConv2d(out_dims, out_dims)
-        self.norm2 = nn.InstanceNorm2d(out_dims)
-        self.act2 = nn.GELU()
+        self.norm2 = nn.BatchNorm2d(out_dims)
+        self.act2 = nn.SiLU()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.conv1(x)
