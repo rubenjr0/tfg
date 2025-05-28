@@ -139,7 +139,7 @@ class UncertaintyEstimator(LightningModule):
         )
         opt = Ranger21(
             self.parameters(),
-            lr=2e-3,
+            lr=0.01,
             num_epochs=self.trainer.max_epochs,
             num_batches_per_epoch=batches_per_epoch,
         )
