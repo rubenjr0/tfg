@@ -28,9 +28,10 @@ def train():
         import neptune  # noqa: F401
         from lightning.pytorch.loggers import NeptuneLogger
 
+        project = getenv("NEPTUNE_PROJECT")
         logger = NeptuneLogger(
             api_key=neptune_key,
-            project="uncertainty-predictor",
+            project=project,
             tags=["uncertainty", "depth", "rgb"],
         )
 
