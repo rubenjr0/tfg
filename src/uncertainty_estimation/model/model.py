@@ -15,7 +15,7 @@ from .unet import UNet
 
 
 class UncertaintyEstimator(LightningModule):
-    def __init__(self, rerun_logging: bool = False):
+    def __init__(self, opt: str="adamw", rerun_logging: bool = False):
         super().__init__()
         self.save_hyperparameters()
         self.rgb_encoder = Encoder(in_dims=3, out_dims=16)
@@ -23,6 +23,7 @@ class UncertaintyEstimator(LightningModule):
         # self.model = ConvVAE(in_dims=32)
         # self.model = ConvMixer(in_dims=32, h_dims=128, out_dims=1, depth=20)
         self.model = UNet(in_dims=32)
+        self.opt_name = opt
 
         self.estimated_w = 1.0
         self.reference_w = 0.1
@@ -107,9 +108,9 @@ class UncertaintyEstimator(LightningModule):
                 rr.Scalars(reference_nll_loss.detach().cpu()),
             )
             rr.log(f"{split}/loss/total", rr.Scalars(tv_loss.detach().cpu()))
-        self.log(f"{split}/loss", loss)
-        self.log(f"{split}/estimated_var_loss", estimated_nll_loss)
-        self.log(f"{split}/reference_var_loss", reference_nll_loss)
+        self.log(f"{split}/loss", loss, sync_dist=True)
+        self.log(f"{split}/estimated_var_loss", estimated_nll_loss, sync_dist=True)
+        self.log(f"{split}/reference_var_loss", reference_nll_loss, sync_dist=True)
         return loss, image, observation, estimated_variance, reference_variance, depth
 
     def training_step(self, batch, _batch_idx):
@@ -123,7 +124,7 @@ class UncertaintyEstimator(LightningModule):
         corr = torch.mean((depth - observation) ** 2 / (estimated_variance + 1e-6))
         if self.rerun_logging:
             rr.log("val/corr", rr.Scalars(corr.detach().cpu()))
-        self.log("val/corr", corr)
+        self.log("val/corr", corr, sync_dist=True)
 
         self.last_image = image
         self.last_obs = observation
@@ -170,8 +171,7 @@ class UncertaintyEstimator(LightningModule):
             logger.experiment["val/ref_var"].append(File.as_image(to_img(ref_var)))
 
     def configure_optimizers(self):
-        use = "ranger"
-        if use == "ranger":
+        if self.opt_name == "ranger":
             batches_per_epoch = (
                 self.trainer.estimated_stepping_batches / self.trainer.max_epochs
             )
@@ -180,13 +180,13 @@ class UncertaintyEstimator(LightningModule):
                 lr=1e-4,
                 num_epochs=self.trainer.max_epochs,
                 num_batches_per_epoch=batches_per_epoch,
-                weight_decay=1e-3,
+                weight_decay=2e-4,
             )
             return opt
         else:
             opt = torch.optim.AdamW(self.parameters(), lr=1e-4, weight_decay=2e-4)
             sched = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
-                opt, T_0=10, T_mult=2
+                opt, eta_min=1e-6, T_mult=1, T_0=20
             )
             return {
                 "optimizer": opt,

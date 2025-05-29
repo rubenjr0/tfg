@@ -17,6 +17,8 @@ init:
         cat data.txt | xargs -n 1 -P 4 wget -P data; \
         unzip "data/*.zip" -d data; \
         rm data/*.zip; \
+        find data -type f ! -name "*.color.jpg" ! -name "*.est.npy" ! -name "*.depth_meters.hdf5"
+ -print0 | xargs -0 rm --
     fi
 
     # Preprocess data
