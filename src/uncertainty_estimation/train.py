@@ -1,6 +1,5 @@
 from os import getenv
 import lightning as L
-import rerun as rr
 import torch
 from torch.utils.data import DataLoader, random_split
 from dotenv import load_dotenv
@@ -19,7 +18,6 @@ def train():
     train_ds, val_ds = random_split(dataset, [0.7, 0.3])
     train_dl = DataLoader(train_ds, batch_size=16, shuffle=True, num_workers=12)
     val_dl = DataLoader(val_ds, batch_size=16, shuffle=False, num_workers=12)
-    model = UncertaintyEstimator()
 
     load_dotenv()
     logger = None
@@ -34,9 +32,13 @@ def train():
             project=project,
             tags=["uncertainty", "depth", "rgb"],
         )
+    use_rerun = getenv("USE_RERUN", "false").lower() == "true"
+    if use_rerun:
+        import rerun as rr
 
-    rr.init("uncertainty-predictor", spawn=True)
+        rr.init("uncertainty-predictor", spawn=True)
 
+    model = UncertaintyEstimator(rerun_logging=use_rerun)
     trainer = L.Trainer(
         max_epochs=100,
         log_every_n_steps=2,

@@ -98,10 +98,18 @@ class UncertaintyEstimator(LightningModule):
 
         if self.rerun_logging:
             rr.log(f"{split}/loss", rr.Scalars(loss.detach().cpu()))
-            rr.log(f"{split}/loss/estimated", rr.Scalars(estimated_nll_loss.detach().cpu()))
-            rr.log(f"{split}/loss/reference", rr.Scalars(reference_nll_loss.detach().cpu()))
+            rr.log(
+                f"{split}/loss/estimated_var",
+                rr.Scalars(estimated_nll_loss.detach().cpu()),
+            )
+            rr.log(
+                f"{split}/loss/reference_var",
+                rr.Scalars(reference_nll_loss.detach().cpu()),
+            )
             rr.log(f"{split}/loss/total", rr.Scalars(tv_loss.detach().cpu()))
-        self.append(f"{split}/loss", loss)
+        self.log(f"{split}/loss", loss)
+        self.log(f"{split}/estimated_var_loss", estimated_nll_loss)
+        self.log(f"{split}/reference_var_loss", reference_nll_loss)
         return loss, image, observation, estimated_variance, reference_variance, depth
 
     def training_step(self, batch, _batch_idx):
@@ -113,9 +121,9 @@ class UncertaintyEstimator(LightningModule):
             self.step("val", batch)
         )
         corr = torch.mean((depth - observation) ** 2 / (estimated_variance + 1e-6))
-        self.append("val/corr", corr)
         if self.rerun_logging:
             rr.log("val/corr", rr.Scalars(corr.detach().cpu()))
+        self.log("val/corr", corr)
 
         self.last_image = image
         self.last_obs = observation
@@ -129,7 +137,15 @@ class UncertaintyEstimator(LightningModule):
             return tensor.squeeze().detach().cpu().numpy()
 
         def to_img(tensor: np.ndarray) -> np.ndarray:
-            return (tensor / tensor.max() * 255).clip(0, 255).astype(np.uint8)
+            if tensor.ndim == 2:
+                tensor = tensor[:, :, np.newaxis]
+            elif tensor.ndim == 3:
+                tensor = tensor.transpose(1, 2, 0)
+            return (
+                (tensor / (tensor.max() + 1e-6) * 255)
+                .clip(0, 255)
+                .astype(np.uint8)
+            )
 
         if self.trainer.current_epoch % self.trainer.log_every_n_steps != 0:
             return
@@ -138,22 +154,24 @@ class UncertaintyEstimator(LightningModule):
         obs = tensor_to_numpy(self.last_obs[0])
         est_var = tensor_to_numpy(self.last_est_var[0])
         ref_var = tensor_to_numpy(self.last_ref_var[0])
-       
+
         if self.rerun_logging:
             rr.log("image/", rr.Image(image))
             rr.log("image/depth", rr.DepthImage(depth))
             rr.log("image/est", rr.DepthImage(obs))
             rr.log("image/est/var", rr.Tensor(est_var))
             rr.log("image/ref/var", rr.Tensor(ref_var))
-        self.logger.experiment["val/image"].append(File.as_image(image))
-        self.logger.experiment["val/depth"].append(File.as_image(to_img(depth)))
-        self.logger.experiment["val/est"].append(File.as_image(to_img(obs)))
-        self.logger.experiment["val/est_var"].append(File.as_image(to_img(est_var)))
-        self.logger.experiment["val/ref_var"].append(File.as_image(to_img(ref_var)))
+        logger = self.logger
+        if logger is not None:
+            logger.experiment["val/image"].append(File.as_image(image))
+            logger.experiment["val/depth"].append(File.as_image(to_img(depth)))
+            logger.experiment["val/est"].append(File.as_image(to_img(obs)))
+            logger.experiment["val/est_var"].append(File.as_image(to_img(est_var)))
+            logger.experiment["val/ref_var"].append(File.as_image(to_img(ref_var)))
 
     def configure_optimizers(self):
-        use = 'ranger'
-        if use == 'ranger':
+        use = "ranger"
+        if use == "ranger":
             batches_per_epoch = (
                 self.trainer.estimated_stepping_batches / self.trainer.max_epochs
             )
@@ -166,10 +184,10 @@ class UncertaintyEstimator(LightningModule):
             )
             return opt
         else:
-            opt = torch.optim.AdamW(
-                self.parameters(), lr=1e-4, weight_decay=2e-4
+            opt = torch.optim.AdamW(self.parameters(), lr=1e-4, weight_decay=2e-4)
+            sched = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+                opt, T_0=10, T_mult=2
             )
-            sched = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(opt, T_0=10, T_mult=2)
             return {
                 "optimizer": opt,
                 "lr_scheduler": {
