@@ -1,7 +1,10 @@
+from os import getenv
 import lightning as L
 import rerun as rr
 import torch
 from torch.utils.data import DataLoader, random_split
+from dotenv import load_dotenv
+
 # from lightning.pytorch import callbacks as CB
 
 from uncertainty_estimation.data import ImageDepthDataset
@@ -18,12 +21,25 @@ def train():
     val_dl = DataLoader(val_ds, batch_size=16, shuffle=False, num_workers=12)
     model = UncertaintyEstimator()
 
+    load_dotenv()
+    logger = None
+    neptune_key = getenv("NEPTUNE_API_TOKEN")
+    if neptune_key is not None:
+        import neptune  # noqa: F401
+        from lightning.pytorch.loggers import NeptuneLogger
+
+        logger = NeptuneLogger(
+            api_key=neptune_key,
+            project="uncertainty-predictor",
+            tags=["uncertainty", "depth", "rgb"],
+        )
+
     rr.init("uncertainty-predictor", spawn=True)
 
     trainer = L.Trainer(
         max_epochs=100,
         log_every_n_steps=2,
-        logger=False,
+        logger=logger,
         # fast_dev_run=True,
         # gradient_clip_val=1.0,
         detect_anomaly=False,

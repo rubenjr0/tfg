@@ -1,13 +1,15 @@
+import numpy as np
 import rerun as rr
 import torch
 from lightning import LightningModule
+from neptune.types import File
 
 # from torch.nn import functional as F
 from ranger21 import Ranger21
 
 from .layers import Encoder
-
 from .unet import UNet
+
 # from .convmixer import ConvMixer
 # from .conv_vae import ConvVAE
 
@@ -97,6 +99,7 @@ class UncertaintyEstimator(LightningModule):
         rr.log(f"{split}/loss/estimated", rr.Scalars(estimated_nll_loss.detach().cpu()))
         rr.log(f"{split}/loss/reference", rr.Scalars(reference_nll_loss.detach().cpu()))
         rr.log(f"{split}/loss/total", rr.Scalars(tv_loss.detach().cpu()))
+        self.append(f"{split}/loss", loss)
         return loss, image, observation, estimated_variance, reference_variance, depth
 
     def training_step(self, batch, _batch_idx):
@@ -118,31 +121,30 @@ class UncertaintyEstimator(LightningModule):
         return loss
 
     def on_validation_epoch_end(self):
+        def tensor_to_numpy(tensor: torch.Tensor) -> np.ndarray:
+            return tensor.squeeze().detach().cpu().numpy()
+
+        def to_img(tensor: np.ndarray) -> np.ndarray:
+            return (tensor / tensor.max() * 255).clip(0, 255).astype(np.uint8)
+
         if self.trainer.current_epoch % self.trainer.log_every_n_steps != 0:
             return
-        image = (
-            self.last_image[0]
-            .squeeze()
-            .detach()
-            .cpu()
-            .numpy()
-            .transpose(1, 2, 0)
-            .clip(0, 255)
-            .astype("uint8")
-        )
-        depth_img = self.last_depth[0, 0].cpu().numpy()
+        image = to_img(tensor_to_numpy(self.last_image[0]))
+        depth = tensor_to_numpy(self.last_depth[0])
+        obs = tensor_to_numpy(self.last_obs[0])
+        est_var = tensor_to_numpy(self.last_est_var[0])
+        ref_var = tensor_to_numpy(self.last_ref_var[0])
+
         rr.log("image/", rr.Image(image))
-        rr.log("image/depth", rr.DepthImage(depth_img))
-        last_obs = self.last_obs[0].cpu().numpy()
-        rr.log("image/est", rr.DepthImage(last_obs))
-        est_var_img: torch.Tensor = (
-            self.last_est_var[0].squeeze().detach().cpu().numpy()
-        )
-        rr.log("image/est/var", rr.Tensor(est_var_img))
-        ref_var_img: torch.Tensor = (
-            self.last_ref_var[0].squeeze().detach().cpu().numpy()
-        )
-        rr.log("image/ref/var", rr.Tensor(ref_var_img))
+        rr.log("image/depth", rr.DepthImage(depth))
+        rr.log("image/est", rr.DepthImage(obs))
+        rr.log("image/est/var", rr.Tensor(est_var))
+        rr.log("image/ref/var", rr.Tensor(ref_var))
+        self.logger.experiment["val/image"].append(File.as_image(image))
+        self.logger.experiment["val/depth"].append(File.as_image(to_img(depth)))
+        self.logger.experiment["val/est"].append(File.as_image(to_img(obs)))
+        self.logger.experiment["val/est_var"].append(File.as_image(to_img(est_var)))
+        self.logger.experiment["val/ref_var"].append(File.as_image(to_img(ref_var)))
 
     def configure_optimizers(self):
         batches_per_epoch = (
