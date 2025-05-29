@@ -15,7 +15,7 @@ from .unet import UNet
 
 
 class UncertaintyEstimator(LightningModule):
-    def __init__(self):
+    def __init__(self, rerun_logging: bool = False):
         super().__init__()
         self.save_hyperparameters()
         self.rgb_encoder = Encoder(in_dims=3, out_dims=16)
@@ -28,6 +28,7 @@ class UncertaintyEstimator(LightningModule):
         self.reference_w = 0.1
         self.tv_w = 0.01
         self.reg_w = 0.01
+        self.rerun_logging = rerun_logging
 
     def forward(self, rgb, depth, depth_edges, depth_laplacian):
         # in_shape = rgb.shape[2:]
@@ -95,10 +96,11 @@ class UncertaintyEstimator(LightningModule):
             + self.reg_w * reg
         )
 
-        rr.log(f"{split}/loss", rr.Scalars(loss.detach().cpu()))
-        rr.log(f"{split}/loss/estimated", rr.Scalars(estimated_nll_loss.detach().cpu()))
-        rr.log(f"{split}/loss/reference", rr.Scalars(reference_nll_loss.detach().cpu()))
-        rr.log(f"{split}/loss/total", rr.Scalars(tv_loss.detach().cpu()))
+        if self.rerun_logging:
+            rr.log(f"{split}/loss", rr.Scalars(loss.detach().cpu()))
+            rr.log(f"{split}/loss/estimated", rr.Scalars(estimated_nll_loss.detach().cpu()))
+            rr.log(f"{split}/loss/reference", rr.Scalars(reference_nll_loss.detach().cpu()))
+            rr.log(f"{split}/loss/total", rr.Scalars(tv_loss.detach().cpu()))
         self.append(f"{split}/loss", loss)
         return loss, image, observation, estimated_variance, reference_variance, depth
 
@@ -110,8 +112,10 @@ class UncertaintyEstimator(LightningModule):
         loss, image, observation, estimated_variance, reference_variance, depth = (
             self.step("val", batch)
         )
-        acc = torch.mean((depth - observation) ** 2 / (estimated_variance + 1e-6))
-        rr.log("val/acc", rr.Scalars(acc.detach().cpu()))
+        corr = torch.mean((depth - observation) ** 2 / (estimated_variance + 1e-6))
+        self.append("val/corr", corr)
+        if self.rerun_logging:
+            rr.log("val/corr", rr.Scalars(corr.detach().cpu()))
 
         self.last_image = image
         self.last_obs = observation
@@ -134,12 +138,13 @@ class UncertaintyEstimator(LightningModule):
         obs = tensor_to_numpy(self.last_obs[0])
         est_var = tensor_to_numpy(self.last_est_var[0])
         ref_var = tensor_to_numpy(self.last_ref_var[0])
-
-        rr.log("image/", rr.Image(image))
-        rr.log("image/depth", rr.DepthImage(depth))
-        rr.log("image/est", rr.DepthImage(obs))
-        rr.log("image/est/var", rr.Tensor(est_var))
-        rr.log("image/ref/var", rr.Tensor(ref_var))
+       
+        if self.rerun_logging:
+            rr.log("image/", rr.Image(image))
+            rr.log("image/depth", rr.DepthImage(depth))
+            rr.log("image/est", rr.DepthImage(obs))
+            rr.log("image/est/var", rr.Tensor(est_var))
+            rr.log("image/ref/var", rr.Tensor(ref_var))
         self.logger.experiment["val/image"].append(File.as_image(image))
         self.logger.experiment["val/depth"].append(File.as_image(to_img(depth)))
         self.logger.experiment["val/est"].append(File.as_image(to_img(obs)))
