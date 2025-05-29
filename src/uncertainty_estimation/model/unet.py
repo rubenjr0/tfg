@@ -8,10 +8,12 @@ from . import layers as L
 class UNet(nn.Module):
     def __init__(self, in_dims: int, out_dims: int = 1):
         super().__init__()
-        self.down_conv1 = nn.Sequential(L.ConvBlock(in_dims, 64), L.ConvBlock(64, 64))
-        self.down_conv2 = nn.Sequential(L.ConvBlock(64, 128), L.ConvBlock(128, 128))
-        self.down_conv3 = nn.Sequential(L.ConvBlock(128, 256), L.ConvBlock(256, 256))
-        self.down_conv4 = nn.Sequential(L.ConvBlock(256, 512), L.ConvBlock(512, 512))
+        self.down_conv1 = L.ConvBlock(in_dims, 64)
+        self.down_conv2 = L.ConvBlock(64, 128)
+        self.down_conv3 = L.ConvBlock(128, 256)
+        self.down_conv4 = L.ConvBlock(256, 512)
+
+        self.blottleneck = L.SeparableConv2d(512, 512)
 
         self.up1 = L.UpscalingBlock(512, 256)
         self.up2 = L.UpscalingBlock(256, 128)
@@ -30,6 +32,7 @@ class UNet(nn.Module):
         xd2 = F.max_pool2d(self.down_conv2(xd1), 2)
         xd3 = F.max_pool2d(self.down_conv3(xd2), 2)
         xd4 = F.max_pool2d(self.down_conv4(xd3), 2)
+        xd4 = self.blottleneck(xd4)
 
         xu1 = self.up1(xd4) + xd3
         unc256 = self.unc256(xu1)

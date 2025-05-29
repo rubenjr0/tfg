@@ -23,9 +23,8 @@ class UncertaintyEstimator(LightningModule):
         self.model = UNet(in_dims=32)
 
         self.estimated_w = 1.0
-        self.reference_w = 0.6
-        self.noisy_w = 0.0
-        self.tv_w = 0.1
+        self.reference_w = 0.1
+        self.tv_w = 0.01
         self.reg_w = 0.01
 
     def forward(self, rgb, depth, depth_edges, depth_laplacian):
@@ -55,7 +54,7 @@ class UncertaintyEstimator(LightningModule):
             (variance_map[:, :, 1:, :] - variance_map[:, :, :-1, :]) ** 2
         ) + torch.mean((variance_map[:, :, :, 1:] - variance_map[:, :, :, :-1]) ** 2)
 
-    def training_step(self, batch, _batch_idx):
+    def step(self, split: str, batch):
         image = batch["image"]
         depth = batch["depth"]
         depth_edges = batch["depth_edges"]
@@ -94,10 +93,22 @@ class UncertaintyEstimator(LightningModule):
             + self.reg_w * reg
         )
 
-        rr.log("train/loss", rr.Scalars(loss.detach().cpu()))
-        rr.log("train/loss/estimated", rr.Scalars(estimated_nll_loss.detach().cpu()))
-        rr.log("train/loss/reference", rr.Scalars(reference_nll_loss.detach().cpu()))
-        rr.log("train/loss/total", rr.Scalars(tv_loss.detach().cpu()))
+        rr.log(f"{split}/loss", rr.Scalars(loss.detach().cpu()))
+        rr.log(f"{split}/loss/estimated", rr.Scalars(estimated_nll_loss.detach().cpu()))
+        rr.log(f"{split}/loss/reference", rr.Scalars(reference_nll_loss.detach().cpu()))
+        rr.log(f"{split}/loss/total", rr.Scalars(tv_loss.detach().cpu()))
+        return loss, image, observation, estimated_variance, reference_variance, depth
+
+    def training_step(self, batch, _batch_idx):
+        loss, _, _, _, _, _ = self.step("train", batch)
+        return loss
+
+    def validation_step(self, batch, _batch_idx):
+        loss, image, observation, estimated_variance, reference_variance, depth = (
+            self.step("val", batch)
+        )
+        acc = torch.mean((depth - observation) ** 2 / (estimated_variance + 1e-6))
+        rr.log("val/acc", rr.Scalars(acc.detach().cpu()))
 
         self.last_image = image
         self.last_obs = observation
@@ -106,7 +117,7 @@ class UncertaintyEstimator(LightningModule):
         self.last_depth = depth
         return loss
 
-    def on_train_epoch_end(self):
+    def on_validation_epoch_end(self):
         if self.trainer.current_epoch % self.trainer.log_every_n_steps != 0:
             return
         image = (
@@ -139,9 +150,10 @@ class UncertaintyEstimator(LightningModule):
         )
         opt = Ranger21(
             self.parameters(),
-            lr=0.01,
+            lr=2e-4,
             num_epochs=self.trainer.max_epochs,
             num_batches_per_epoch=batches_per_epoch,
+            weight_decay=1e-3,
         )
         return opt
 

@@ -1,7 +1,7 @@
 import lightning as L
 import rerun as rr
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, random_split
 # from lightning.pytorch import callbacks as CB
 
 from uncertainty_estimation.data import ImageDepthDataset
@@ -13,7 +13,9 @@ def train():
     torch.manual_seed(42)
 
     dataset = ImageDepthDataset(root="data/")
-    dataloader = DataLoader(dataset, batch_size=16, shuffle=True, num_workers=12)
+    train_ds, val_ds = random_split(dataset, [0.7, 0.3])
+    train_dl = DataLoader(train_ds, batch_size=16, shuffle=True, num_workers=12)
+    val_dl = DataLoader(val_ds, batch_size=16, shuffle=False, num_workers=12)
     model = UncertaintyEstimator()
 
     rr.init("uncertainty-predictor", spawn=True)
@@ -31,7 +33,7 @@ def train():
         ],
     )
 
-    trainer.fit(model, dataloader)
+    trainer.fit(model, train_dl, val_dl)
 
 
 if __name__ == "__main__":

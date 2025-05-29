@@ -1,3 +1,4 @@
+import random
 from glob import glob
 
 import h5py
@@ -36,6 +37,18 @@ class ImageDepthDataset(Dataset):
                 T.Resize((256, 256)),
             ]
         )
+        self.augmentations = T.Compose(
+            [
+                T.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
+            ]
+        )
+
+    def _aug(self, image, do_hflip: bool, do_rotate: bool, rotate_angle: float):
+        if do_hflip:
+            image = T.functional.hflip(image)
+        if do_rotate:
+            image = T.functional.rotate(image, rotate_angle)
+        return image
 
     def __len__(self):
         return len(self.paths)
@@ -47,6 +60,7 @@ class ImageDepthDataset(Dataset):
         if np.isnan(image).any() or np.isnan(depth).any():
             return self.__getitem__((idx + 1) % len(self))
 
+        image = self.augmentations(image)
         image = self.transform(image)
 
         depth = self.transform(depth)
@@ -54,13 +68,7 @@ class ImageDepthDataset(Dataset):
         depth_edges = self.transform(depth_edges)
         depth_laplacian = self.transform(depth_laplacian)
 
-        output = {
-            "image_path": rgb_path,
-            "image": image,
-            "depth": depth,
-            "depth_edges": depth_edges,
-            "depth_laplacian": depth_laplacian,
-        }
+        output = {}
 
         if not self.preprocess:
             est = np.load(rgb_path.replace("color.jpg", "est.npy"))
@@ -69,9 +77,29 @@ class ImageDepthDataset(Dataset):
             est_edges = self.transform(est_edges)
             est_laplacian = self.transform(est_laplacian)
 
+            # Perform the same augmentations in the same way
+            do_hflip = random.random() > 0.5
+            do_rotate = random.random() > 0.5
+            r_angle = random.uniform(-8, 8)
+            image = self._aug(image, do_hflip, do_rotate, r_angle)
+            depth = self._aug(depth, do_hflip, do_rotate, r_angle)
+            depth_edges = self._aug(depth_edges, do_hflip, do_rotate, r_angle)
+            depth_laplacian = self._aug(depth_laplacian, do_hflip, do_rotate, r_angle)
+            est = self._aug(est, do_hflip, do_rotate, r_angle)
+            est_edges = self._aug(est_edges, do_hflip, do_rotate, r_angle)
+            est_laplacian = self._aug(est_laplacian, do_hflip, do_rotate, r_angle)
+
             output["est"] = est
             output["est_edges"] = est_edges
             output["est_laplacian"] = est_laplacian
+        else:
+            output["image_path"] = rgb_path
+
+        output["image"] = image
+        output["depth"] = depth
+        output["depth_edges"] = depth_edges
+        output["depth_laplacian"] = depth_laplacian
+
         return output
 
 

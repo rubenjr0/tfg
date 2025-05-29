@@ -15,7 +15,7 @@ def ConvMixer(
 ):
     return nn.Sequential(
         nn.Conv2d(in_dims, h_dims, kernel_size=patch_size, stride=patch_size),
-        nn.SiLU(),
+        nn.GELU(),
         nn.BatchNorm2d(h_dims),
         *[
             nn.Sequential(
@@ -24,12 +24,12 @@ def ConvMixer(
                         nn.Conv2d(
                             h_dims, h_dims, kernel_size, groups=h_dims, padding="same"
                         ),
-                        nn.SiLU(),
+                        nn.GELU(),
                         nn.BatchNorm2d(h_dims),
                     )
                 ),
                 nn.Conv2d(h_dims, h_dims, kernel_size=1),
-                nn.SiLU(),
+                nn.GELU(),
                 nn.BatchNorm2d(h_dims),
             )
             for _ in range(depth)

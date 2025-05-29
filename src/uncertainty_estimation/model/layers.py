@@ -46,8 +46,8 @@ class ConvBlock(nn.Module):
         super(ConvBlock, self).__init__()
         self.conv = SeparableConv2d(in_dims, out_dims)
         self.norm = nn.BatchNorm2d(out_dims)
-        self.act = nn.SiLU()
-        self.drop = nn.Dropout(0.1)
+        self.act = nn.GELU()
+        self.drop = nn.Dropout(0.2)
 
     def forward(self, x):
         x = self.conv(x)
@@ -65,7 +65,7 @@ class UpscalingBlock(nn.Module):
         self.shuffle = nn.PixelShuffle(2)
         self.alpha = nn.Parameter(torch.tensor(0.5))
         self.norm = nn.BatchNorm2d(out_dims)
-        self.act = nn.SiLU()
+        self.act = nn.GELU()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         bil = self.bil_proj(x)
@@ -89,10 +89,10 @@ class Encoder(nn.Module):
         super().__init__()
         self.conv1 = SeparableConv2d(in_dims, out_dims)
         self.norm1 = nn.BatchNorm2d(out_dims)
-        self.act1 = nn.SiLU()
+        self.act1 = nn.GELU()
         self.conv2 = SeparableConv2d(out_dims, out_dims)
         self.norm2 = nn.BatchNorm2d(out_dims)
-        self.act2 = nn.SiLU()
+        self.act2 = nn.GELU()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.conv1(x)
