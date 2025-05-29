@@ -147,17 +147,33 @@ class UncertaintyEstimator(LightningModule):
         self.logger.experiment["val/ref_var"].append(File.as_image(to_img(ref_var)))
 
     def configure_optimizers(self):
-        batches_per_epoch = (
-            self.trainer.estimated_stepping_batches / self.trainer.max_epochs
-        )
-        opt = Ranger21(
-            self.parameters(),
-            lr=2e-4,
-            num_epochs=self.trainer.max_epochs,
-            num_batches_per_epoch=batches_per_epoch,
-            weight_decay=1e-3,
-        )
-        return opt
+        use = 'ranger'
+        if use == 'ranger':
+            batches_per_epoch = (
+                self.trainer.estimated_stepping_batches / self.trainer.max_epochs
+            )
+            opt = Ranger21(
+                self.parameters(),
+                lr=1e-4,
+                num_epochs=self.trainer.max_epochs,
+                num_batches_per_epoch=batches_per_epoch,
+                weight_decay=1e-3,
+            )
+            return opt
+        else:
+            opt = torch.optim.AdamW(
+                self.parameters(), lr=1e-4, weight_decay=2e-4
+            )
+            sched = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(opt, T_0=10, T_mult=2)
+            return {
+                "optimizer": opt,
+                "lr_scheduler": {
+                    "scheduler": sched,
+                    "interval": "epoch",
+                    "frequency": 1,
+                    "monitor": "val/loss",
+                },
+            }
 
 
 if __name__ == "__main__":
