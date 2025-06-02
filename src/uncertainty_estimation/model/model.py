@@ -1,3 +1,4 @@
+from os import getenv
 import numpy as np
 import rerun as rr
 import torch
@@ -15,21 +16,25 @@ from .unet import UNet
 
 
 class UncertaintyEstimator(LightningModule):
-    def __init__(self, opt: str = "adamw", rerun_logging: bool = False):
+    def __init__(
+        self,
+        activation: str,
+        optimizer: str = "adamw",
+    ):
         super().__init__()
         self.save_hyperparameters()
-        self.rgb_encoder = Encoder(in_dims=3, out_dims=16)
-        self.stack_encoder = Encoder(in_dims=3, out_dims=16)
+        self.rgb_encoder = Encoder(in_dims=3, out_dims=16, act=activation)
+        self.stack_encoder = Encoder(in_dims=3, out_dims=16, act=activation)
         # self.model = ConvVAE(in_dims=32)
         # self.model = ConvMixer(in_dims=32, h_dims=128, out_dims=1, depth=20)
-        self.model = UNet(in_dims=32)
-        self.opt_name = opt
+        self.model = UNet(in_dims=32, out_dims=1, act=activation)
+        self.optimizer_name = optimizer
 
         self.estimated_w = 1.0
         self.reference_w = 0.1
         self.tv_w = 0.01
         self.reg_w = 0.01
-        self.rerun_logging = rerun_logging
+        self.rerun_logging = getenv("USE_RERUN", "false").lower() == "true"
 
     def forward(self, rgb, depth, depth_edges, depth_laplacian):
         # in_shape = rgb.shape[2:]
@@ -167,7 +172,7 @@ class UncertaintyEstimator(LightningModule):
             logger.experiment["val/ref_var"].append(File.as_image(to_img(ref_var)))
 
     def configure_optimizers(self):
-        if self.opt_name == "ranger":
+        if self.optimizer_name == "ranger":
             batches_per_epoch = (
                 self.trainer.estimated_stepping_batches / self.trainer.max_epochs
             )

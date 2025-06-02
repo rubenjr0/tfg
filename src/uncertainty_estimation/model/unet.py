@@ -6,19 +6,19 @@ from . import layers as L
 
 
 class UNet(nn.Module):
-    def __init__(self, in_dims: int, out_dims: int = 1):
+    def __init__(self, in_dims: int, out_dims: int, act: str):
         super().__init__()
-        self.down_conv1 = L.ConvBlock(in_dims, 64)
-        self.down_conv2 = L.ConvBlock(64, 128)
-        self.down_conv3 = L.ConvBlock(128, 256)
-        self.down_conv4 = L.ConvBlock(256, 512)
+        self.down_conv1 = L.ConvBlock(in_dims, 64, act=act)
+        self.down_conv2 = L.ConvBlock(64, 128, act=act)
+        self.down_conv3 = L.ConvBlock(128, 256, act=act)
+        self.down_conv4 = L.ConvBlock(256, 512, act=act)
 
         self.blottleneck = L.SeparableConv2d(512, 512)
 
-        self.up1 = L.UpscalingBlock(512, 256)
-        self.up2 = L.UpscalingBlock(256, 128)
-        self.up3 = L.UpscalingBlock(128, 64)
-        self.up4 = L.UpscalingBlock(64, 32)
+        self.up1 = L.UpscalingBlock(512, 256, act=act)
+        self.up2 = L.UpscalingBlock(256, 128, act=act)
+        self.up3 = L.UpscalingBlock(128, 64, act=act)
+        self.up4 = L.UpscalingBlock(64, 32, act=act)
 
         self.unc256 = L.SeparableConv2d(256, out_dims)
         self.unc128 = L.SeparableConv2d(128, out_dims)

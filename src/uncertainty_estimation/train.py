@@ -19,6 +19,7 @@ def train():
     project = getenv("NEPTUNE_PROJECT")
     use_rerun = getenv("USE_RERUN", "false").lower() == "true"
     opt = getenv("OPTIMIZER", "adamw").lower()
+    act = getenv("ACTIVATION", "gelu").lower()
     max_epochs = int(getenv("MAX_EPOCHS", "100"))
     batch_size = int(getenv("BATCH_SIZE", "16"))
 
@@ -42,7 +43,7 @@ def train():
 
         rr.init("uncertainty-predictor", spawn=True)
 
-    model = UncertaintyEstimator(opt=opt, rerun_logging=use_rerun)
+    model = UncertaintyEstimator(activation=act, optimizer=opt)
     trainer = L.Trainer(
         max_epochs=max_epochs,
         log_every_n_steps=2,
