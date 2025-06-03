@@ -10,7 +10,8 @@ wheels/
 .venv
 
 # ignore artifacts and checkpoints
-data/
+data/train/
+data/test/
 **/*.pt
 **/*.ckpt
 .neptune/
