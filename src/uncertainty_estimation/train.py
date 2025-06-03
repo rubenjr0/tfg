@@ -5,6 +5,7 @@ import lightning as L
 import torch
 from dotenv import load_dotenv
 from lightning.pytorch import callbacks as CB
+from lightning.pytorch import strategies as ST
 from torch.utils.data import DataLoader
 from sklearn.model_selection import train_test_split
 
@@ -32,7 +33,6 @@ def train():
     train_folders, val_folders = train_test_split(
         train_folders, train_size=0.8, random_state=SEED
     )
-    print(train_folders, val_folders)
 
     train_dataset = ImageDepthDataset(root="data/train", folders=train_folders)
     val_dataset = ImageDepthDataset(root="data/train", folders=val_folders)
@@ -77,6 +77,7 @@ def train():
         gradient_clip_val=1.0 if opt == "adamw" else None,
         detect_anomaly=False,
         precision="16-mixed",
+        strategy=ST.DDPStrategy(find_unused_parameters=True),
         callbacks=callbacks,
     )
 
