@@ -9,9 +9,11 @@ def get_act(act: str):
         if act == "gelu"
         else nn.SiLU()
         if act == "silu"
-        else nn.Swish()
-        if act == "swish"
+        else nn.Mish()
+        if act == "mish"
         else nn.ReLU()
+        if act == "relu"
+        else ValueError(f"Unknown activation function: {act}")
     )
 
 
@@ -29,44 +31,44 @@ class SeparableConv2d(nn.Module):
         return x
 
 
-class SeparableConvTranspose2d(nn.Module):
-    def __init__(
-        self,
-        in_dims: int,
-        out_dims: int,
-    ):
-        super(SeparableConvTranspose2d, self).__init__()
-        self.depthwise = nn.ConvTranspose2d(
-            in_dims,
-            in_dims,
-            kernel_size=3,
-            stride=2,
-            output_padding=1,
-            padding=1,
-            groups=in_dims,
+class SpatialAttention(nn.Module):
+    def __init__(self, in_dims: int, act: str):
+        super().__init__()
+        self.att = nn.Sequential(
+            nn.Conv2d(in_dims, in_dims // 8, 1),
+            get_act(act),
+            nn.Conv2d(in_dims // 8, 1, 1),
+            nn.Sigmoid(),
         )
-        self.pointwise = nn.Conv2d(in_dims, out_dims, kernel_size=1)
 
     def forward(self, x):
-        x = self.depthwise(x)
-        x = self.pointwise(x)
-        return x
+        return x * self.att(x)
 
 
 class ConvBlock(nn.Module):
-    def __init__(self, in_dims: int, out_dims: int, act: str):
+    def __init__(
+        self, in_dims: int, out_dims: int, act: str, stochastic_prob: float = 0.0
+    ):
         super(ConvBlock, self).__init__()
         self.conv = SeparableConv2d(in_dims, out_dims)
         self.norm = nn.BatchNorm2d(out_dims)
         self.act = get_act(act)
-        self.drop = nn.Dropout(0.2)
+        self.drop = nn.Dropout2d(0.2)
+        self.stochastic_prob = stochastic_prob
+        self.shortcut = (
+            nn.Identity() if in_dims == out_dims else nn.Conv2d(in_dims, out_dims, 1)
+        )
 
     def forward(self, x):
+        id = self.shortcut(x)
+        if self.training and self.stochastic_prob > 0.0:
+            if torch.rand(1) < self.stochastic_prob:
+                return id
         x = self.conv(x)
         x = self.norm(x)
         x = self.act(x)
         x = self.drop(x)
-        return x
+        return x + id
 
 
 class UpscalingBlock(nn.Module):
@@ -104,6 +106,8 @@ class Encoder(nn.Module):
         self.conv2 = SeparableConv2d(out_dims, out_dims)
         self.norm2 = nn.BatchNorm2d(out_dims)
         self.act = get_act(act)
+        self.dropout = nn.Dropout2d(0.1)
+        self.att = SpatialAttention(out_dims, act)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.conv1(x)
@@ -112,4 +116,6 @@ class Encoder(nn.Module):
         x = self.conv2(x)
         x = self.norm2(x)
         x = self.act(x)
+        x = self.dropout(x)
+        x = self.att(x)
         return x

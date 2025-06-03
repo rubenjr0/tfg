@@ -11,34 +11,23 @@ from ranger21 import Ranger21
 from .layers import Encoder
 from .unet import UNet
 
-# from .convmixer import ConvMixer
-# from .conv_vae import ConvVAE
-
 
 class UncertaintyEstimator(LightningModule):
-    def __init__(
-        self,
-        activation: str = "gelu",
-        optimizer: str = "adamw",
-    ):
+    def __init__(self, activation: str, optimizer: str, curriculum_epochs: int = 50):
         super().__init__()
-        self.activation = activation
-        self.optimizer_name = optimizer
-        self.save_hyperparameters()
+        self.save_hyperparameters("activation", "optimizer", "curriculum_epochs")
         self.rgb_encoder = Encoder(in_dims=3, out_dims=16, act=activation)
         self.stack_encoder = Encoder(in_dims=3, out_dims=16, act=activation)
-        # self.model = ConvVAE(in_dims=32)
-        # self.model = ConvMixer(in_dims=32, h_dims=128, out_dims=1, depth=20)
         self.model = UNet(in_dims=32, out_dims=1, act=activation)
+        self.activation = activation
+        self.optimizer_name = optimizer
 
         self.estimated_w = 1.0
-        self.reference_w = 0.1
-        self.tv_w = 0.01
-        self.reg_w = 0.01
+        self.reference_w = 0.15
+        self.curriculum_epochs = curriculum_epochs
         self.rerun_logging = getenv("USE_RERUN", "false").lower() == "true"
 
     def forward(self, rgb, depth, depth_edges, depth_laplacian):
-        # in_shape = rgb.shape[2:]
         stack = torch.cat([depth, depth_edges, depth_laplacian], dim=1)
         rgb = self.rgb_encoder(rgb)
         stack = self.stack_encoder(stack)
@@ -51,9 +40,9 @@ class UncertaintyEstimator(LightningModule):
         self,
         estimated_variance: torch.Tensor,
         target: torch.Tensor,
-        eps=1e-6,
+        eps: float = 1e-6,
     ):
-        safe_var = estimated_variance + eps
+        safe_var = torch.maximum(torch.tensor(eps), estimated_variance)
         log = 0.5 * torch.log(2 * torch.pi * safe_var)
         quad = target / (2 * safe_var)
         nll_loss = (log + quad).mean()
@@ -84,24 +73,18 @@ class UncertaintyEstimator(LightningModule):
         estimated_nll_loss = self.nll_loss(estimated_variance, difference)
 
         # Ground truth depth variance loss (should be close to zero)
-        reference_nll_loss = self.nll_loss(
-            reference_variance, torch.full_like(difference, 0.01)
+        base_std = 0.001
+        linear_coef = 0.005
+        quad_coef = 0.002
+        depth_std = base_std + linear_coef * depth + quad_coef * (depth**2)
+        depth_var = torch.clamp(depth_std**2, min=1e-3, max=0.5)
+        reference_nll_loss = self.nll_loss(reference_variance, depth_var)
+        reference_w = (
+            min(1.0, self.trainer.current_epoch / self.curriculum_epochs)
+            * self.reference_w
         )
 
-        # regularization, penalize large values
-        reg = torch.mean(torch.abs(estimated_variance)) + torch.mean(
-            torch.abs(reference_variance)
-        )
-
-        # Smoothness loss
-        tv_loss = self.total_variance_loss(estimated_variance)
-
-        loss = (
-            self.estimated_w * estimated_nll_loss
-            + self.reference_w * reference_nll_loss
-            + self.tv_w * tv_loss
-            + self.reg_w * reg
-        )
+        loss = self.estimated_w * estimated_nll_loss + reference_w * reference_nll_loss
 
         if self.rerun_logging:
             rr.log(f"{split}/loss", rr.Scalars(loss.detach().cpu()))
@@ -113,7 +96,7 @@ class UncertaintyEstimator(LightningModule):
                 f"{split}/loss/reference_var",
                 rr.Scalars(reference_nll_loss.detach().cpu()),
             )
-            rr.log(f"{split}/loss/total", rr.Scalars(tv_loss.detach().cpu()))
+            # rr.log(f"{split}/loss/total", rr.Scalars(tv_loss.detach().cpu()))
         self.log(f"{split}/loss", loss, sync_dist=True)
         self.log(f"{split}/estimated_var_loss", estimated_nll_loss, sync_dist=True)
         self.log(f"{split}/reference_var_loss", reference_nll_loss, sync_dist=True)
@@ -139,6 +122,16 @@ class UncertaintyEstimator(LightningModule):
         self.last_depth = depth
         return loss
 
+    def test_step(self, batch, _batch_idx):
+        loss, image, observation, estimated_variance, reference_variance, depth = (
+            self.step("test", batch)
+        )
+        corr = torch.mean((depth - observation) ** 2 / (estimated_variance + 1e-6))
+        if self.rerun_logging:
+            rr.log("test/corr", rr.Scalars(corr.detach().cpu()))
+        self.log("test/corr", corr, sync_dist=True)
+        return loss
+
     def on_validation_epoch_end(self):
         def tensor_to_numpy(tensor: torch.Tensor) -> np.ndarray:
             return tensor.squeeze().detach().cpu().numpy()
@@ -148,7 +141,8 @@ class UncertaintyEstimator(LightningModule):
                 tensor = tensor[:, :, np.newaxis]
             elif tensor.ndim == 3:
                 tensor = tensor.transpose(1, 2, 0)
-            return (tensor / (tensor.max() + 1e-6) * 255).clip(0, 255).astype(np.uint8)
+            # return (tensor / (tensor.max() + 1e-6) * 255).clip(0, 255).astype(np.uint8)
+            return tensor
 
         if self.trainer.current_epoch % self.trainer.log_every_n_steps != 0:
             return
@@ -179,16 +173,21 @@ class UncertaintyEstimator(LightningModule):
             )
             opt = Ranger21(
                 self.parameters(),
-                lr=1e-4,
+                lr=5e-5,
+                use_madgrad=True,
                 num_epochs=self.trainer.max_epochs,
                 num_batches_per_epoch=batches_per_epoch,
-                weight_decay=2e-4,
+                weight_decay=5e-4,
             )
             return opt
         else:
-            opt = torch.optim.AdamW(self.parameters(), lr=1e-4, weight_decay=2e-4)
-            sched = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
-                opt, eta_min=1e-6, T_mult=1, T_0=20
+            opt = torch.optim.AdamW(self.parameters(), lr=5e-5, weight_decay=5e-4)
+            sched = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                opt,
+                mode="min",
+                factor=0.6,
+                patience=4,
+                min_lr=1e-6,
             )
             return {
                 "optimizer": opt,
@@ -197,12 +196,6 @@ class UncertaintyEstimator(LightningModule):
                     "interval": "epoch",
                     "frequency": 1,
                     "monitor": "val/loss",
+                    "strict": True,
                 },
             }
-
-
-if __name__ == "__main__":
-    model = UncertaintyEstimator()
-    x = torch.randn(2, 8, 256, 256)
-    y = model(x)
-    print(y.shape)

@@ -56,13 +56,15 @@ def train():
         logger = NeptuneLogger(
             api_key=neptune_key,
             project=project,
-            tags=["uncertainty", "depth", "rgb"],
         )
     if use_rerun:
         import rerun as rr
 
         rr.init("uncertainty-predictor", spawn=True)
 
+    callbacks = [CB.LearningRateMonitor(logging_interval="epoch")]
+    if opt == "adamw":
+        callbacks.append(CB.StochasticWeightAveraging(swa_lrs=4e-4))
     model = UncertaintyEstimator(activation=act, optimizer=opt)
     trainer = L.Trainer(
         max_epochs=max_epochs,
@@ -72,10 +74,7 @@ def train():
         gradient_clip_val=1.0 if opt == "adamw" else None,
         detect_anomaly=False,
         precision="16-mixed",
-        callbacks=[
-            CB.StochasticWeightAveraging(swa_lrs=1e-3) if opt == "adamw" else None,
-            CB.LearningRateMonitor(logging_interval="epoch"),
-        ],
+        callbacks=callbacks,
     )
 
     trainer.fit(model, train_dl, val_dl)
