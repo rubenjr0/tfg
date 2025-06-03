@@ -15,11 +15,19 @@ class ImageDepthDataset(Dataset):
     def __init__(
         self,
         root: str,
+        folders: list[str] = [],
         preprocess: bool = False,
     ):
         super().__init__()
         self.preprocess = preprocess
-        all = glob(f"{root}/**/*final_preview/**", recursive=True)
+        if len(folders) > 0:
+            all = [
+                f
+                for folder in folders
+                for f in glob(f"{root}/{folder}/**/*final_preview/**", recursive=True)
+            ]
+        else:
+            all = glob(f"{root}/**/*final_preview/**", recursive=True)
         self.paths = [
             (
                 r,
@@ -101,12 +109,3 @@ class ImageDepthDataset(Dataset):
         output["depth_laplacian"] = depth_laplacian
 
         return output
-
-
-if __name__ == "__main__":
-    dataset = ImageDepthDataset(root="data/ai_001_001/images")
-    entry = dataset[0]
-
-    for k in entry.keys():
-        d = entry[k].permute(1, 2, 0)
-        print(f"{k:<20} {entry[k].shape} {entry[k].dtype}")

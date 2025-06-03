@@ -18,17 +18,18 @@ from .unet import UNet
 class UncertaintyEstimator(LightningModule):
     def __init__(
         self,
-        activation: str,
+        activation: str = "gelu",
         optimizer: str = "adamw",
     ):
         super().__init__()
+        self.activation = activation
+        self.optimizer_name = optimizer
         self.save_hyperparameters()
         self.rgb_encoder = Encoder(in_dims=3, out_dims=16, act=activation)
         self.stack_encoder = Encoder(in_dims=3, out_dims=16, act=activation)
         # self.model = ConvVAE(in_dims=32)
         # self.model = ConvMixer(in_dims=32, h_dims=128, out_dims=1, depth=20)
         self.model = UNet(in_dims=32, out_dims=1, act=activation)
-        self.optimizer_name = optimizer
 
         self.estimated_w = 1.0
         self.reference_w = 0.1

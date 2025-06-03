@@ -1,18 +1,23 @@
+import os
 from os import getenv
 
 import lightning as L
 import torch
 from dotenv import load_dotenv
 from lightning.pytorch import callbacks as CB
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
+from sklearn.model_selection import train_test_split
+
 
 from uncertainty_estimation.data import ImageDepthDataset
 from uncertainty_estimation.model import UncertaintyEstimator
 
+SEED = 42
+
 
 def train():
     torch.set_float32_matmul_precision("medium")
-    torch.manual_seed(42)
+    torch.manual_seed(SEED)
 
     load_dotenv()
     neptune_key = getenv("NEPTUNE_API_TOKEN")
@@ -23,10 +28,25 @@ def train():
     max_epochs = int(getenv("MAX_EPOCHS", "100"))
     batch_size = int(getenv("BATCH_SIZE", "16"))
 
-    dataset = ImageDepthDataset(root="data/")
-    train_ds, val_ds = random_split(dataset, [0.8, 0.2])
-    train_dl = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=12)
-    val_dl = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=12)
+    train_folders = os.listdir("data/train")
+    train_folders, val_folders = train_test_split(
+        train_folders, train_size=0.8, random_state=SEED
+    )
+    print(train_folders, val_folders)
+
+    train_dataset = ImageDepthDataset(root="data/train", folders=train_folders)
+    val_dataset = ImageDepthDataset(root="data/train", folders=val_folders)
+    test_dataset = ImageDepthDataset(root="data/test")
+
+    train_dl = DataLoader(
+        train_dataset, batch_size=batch_size, shuffle=True, num_workers=12
+    )
+    val_dl = DataLoader(
+        val_dataset, batch_size=batch_size, shuffle=False, num_workers=12
+    )
+    test_dl = DataLoader(
+        test_dataset, batch_size=batch_size, shuffle=False, num_workers=12
+    )
 
     logger = None
     if neptune_key is not None:
@@ -59,6 +79,7 @@ def train():
     )
 
     trainer.fit(model, train_dl, val_dl)
+    trainer.test(model, test_dl)
 
 
 if __name__ == "__main__":
