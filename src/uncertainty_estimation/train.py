@@ -62,7 +62,10 @@ def train():
 
         rr.init("uncertainty-predictor", spawn=True)
 
-    callbacks = [CB.LearningRateMonitor(logging_interval="epoch")]
+    callbacks = [
+        CB.LearningRateMonitor(logging_interval="epoch"),
+        CB.EarlyStopping("val/loss", patience=5, verbose=True),
+    ]
     if opt == "adamw":
         callbacks.append(CB.StochasticWeightAveraging(swa_lrs=4e-4))
     model = UncertaintyEstimator(activation=act, optimizer=opt)
