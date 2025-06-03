@@ -77,7 +77,7 @@ def train():
         gradient_clip_val=1.0 if opt == "adamw" else None,
         detect_anomaly=False,
         precision="16-mixed",
-        strategy=ST.DDPStrategy(find_unused_parameters=True),
+        strategy=ST.DDPStrategy(find_unused_parameters=False),
         callbacks=callbacks,
     )
 

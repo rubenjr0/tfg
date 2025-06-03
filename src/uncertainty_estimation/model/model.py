@@ -141,8 +141,7 @@ class UncertaintyEstimator(LightningModule):
                 tensor = tensor[:, :, np.newaxis]
             elif tensor.ndim == 3:
                 tensor = tensor.transpose(1, 2, 0)
-            # return (tensor / (tensor.max() + 1e-6) * 255).clip(0, 255).astype(np.uint8)
-            return tensor
+            return (tensor / (tensor.max() + 1e-6) * 255).clip(0, 255).astype(np.uint8)
 
         if self.trainer.current_epoch % self.trainer.log_every_n_steps != 0:
             return
