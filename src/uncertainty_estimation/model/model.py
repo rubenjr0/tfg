@@ -13,7 +13,7 @@ from .unet import UNet
 
 
 class UncertaintyEstimator(LightningModule):
-    def __init__(self, activation: str, optimizer: str, curriculum_epochs: int = 50):
+    def __init__(self, activation: str, optimizer: str, curriculum_epochs: int = 20):
         super().__init__()
         self.save_hyperparameters("activation", "optimizer", "curriculum_epochs")
         self.rgb_encoder = Encoder(in_dims=3, out_dims=16, act=activation)
@@ -61,11 +61,16 @@ class UncertaintyEstimator(LightningModule):
         observation = batch["est"]
         observation_edges = batch["est_edges"]
         observation_laplacian = batch["est_laplacian"]
+        noise_std = batch["noise_std"]
+        noisy_depth = batch["noisy_depth"]
+        noisy_edges = batch["noisy_edges"]
+        noisy_laplacian = batch["noisy_laplacian"]
 
         estimated_variance = self(
             image, observation, observation_edges, observation_laplacian
         )
-        reference_variance = self(image, depth, depth_edges, depth_laplacian)
+
+        reference_variance = self(image, noisy_depth, noisy_edges, noisy_laplacian)
 
         difference = (depth - observation) ** 2
 
@@ -73,12 +78,9 @@ class UncertaintyEstimator(LightningModule):
         estimated_nll_loss = self.nll_loss(estimated_variance, difference)
 
         # Ground truth depth variance loss (should be close to zero)
-        base_std = 0.001
-        linear_coef = 0.005
-        quad_coef = 0.002
-        depth_std = base_std + linear_coef * depth + quad_coef * (depth**2)
-        depth_var = torch.clamp(depth_std**2, min=1e-3, max=0.5)
-        reference_nll_loss = self.nll_loss(reference_variance, depth_var)
+        noise_var = noise_std.view(-1, 1, 1, 1) ** 2
+        target_variance = torch.ones_like(difference) * noise_var
+        reference_nll_loss = self.nll_loss(reference_variance, target_variance)
         reference_w = (
             min(1.0, self.trainer.current_epoch / self.curriculum_epochs)
             * self.reference_w
@@ -184,8 +186,8 @@ class UncertaintyEstimator(LightningModule):
             sched = torch.optim.lr_scheduler.ReduceLROnPlateau(
                 opt,
                 mode="min",
-                factor=0.6,
-                patience=4,
+                factor=0.7,
+                patience=3,
                 min_lr=1e-6,
             )
             return {

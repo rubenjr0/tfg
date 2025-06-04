@@ -64,7 +64,7 @@ def train():
 
     callbacks = [
         CB.LearningRateMonitor(logging_interval="epoch"),
-        CB.EarlyStopping("val/loss", patience=5, verbose=True),
+        CB.EarlyStopping("val/corr", patience=8, verbose=True),
     ]
     if opt == "adamw":
         callbacks.append(CB.StochasticWeightAveraging(swa_lrs=4e-4))
@@ -77,7 +77,7 @@ def train():
         gradient_clip_val=1.0 if opt == "adamw" else None,
         detect_anomaly=False,
         precision="16-mixed",
-        strategy=ST.DDPStrategy(find_unused_parameters=False),
+        strategy=ST.DDPStrategy(find_unused_parameters=True),
         callbacks=callbacks,
     )
 

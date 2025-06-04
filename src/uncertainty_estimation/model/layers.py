@@ -35,14 +35,18 @@ class SpatialAttention(nn.Module):
     def __init__(self, in_dims: int, act: str):
         super().__init__()
         self.att = nn.Sequential(
-            nn.Conv2d(in_dims, in_dims // 8, 1),
-            get_act(act),
-            nn.Conv2d(in_dims // 8, 1, 1),
+            nn.Conv2d(2, 1, 7, padding="same"),
+            nn.BatchNorm2d(1, eps=1e-5, momentum=0.01, affine=True),
             nn.Sigmoid(),
         )
 
     def forward(self, x):
-        return x * self.att(x)
+        pool = torch.cat(
+            [torch.max(x, dim=1)[0].unsqueeze(1), torch.mean(x, dim=1).unsqueeze(1)],
+            dim=1,
+        )
+        att = self.att(pool)
+        return x * att
 
 
 class ConvBlock(nn.Module):
