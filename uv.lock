@@ -1205,6 +1205,15 @@ wheels = [
 ]
 
 [[package]]
+name = "prodigyopt"
+version = "1.1.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/6b/8e/5ee7ea4f8ca1e1d8d5d868c6c97e53e8dc769caa383b5a16afc6fd7b28c7/prodigyopt-1.1.2.tar.gz", hash = "sha256:f6ef74944895c9b9a0045e55fdd04d07bdb03b9f09a2c77e2ec772c9d1ece15f", size = 9431, upload-time = "2025-01-16T14:58:31.352Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/57/26/a798a2e274d77944e784c1c577b85fcbdb7189e59ff821d9a2d6b462f853/prodigyopt-1.1.2-py3-none-any.whl", hash = "sha256:4f8f79f71d37e4a501527fc30ecc847731369dc7cbe12e6a178157924e30ce03", size = 10546, upload-time = "2025-01-16T14:58:28.858Z" },
+]
+
+[[package]]
 name = "propcache"
 version = "0.3.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1937,6 +1946,7 @@ dependencies = [
     { name = "h5py" },
     { name = "lightning" },
     { name = "neptune" },
+    { name = "prodigyopt" },
     { name = "python-dotenv" },
     { name = "ranger21" },
     { name = "rerun-sdk" },
@@ -1958,6 +1968,7 @@ requires-dist = [
     { name = "h5py", specifier = ">=3.13.0" },
     { name = "lightning", specifier = ">=2.5.1" },
     { name = "neptune", specifier = ">=1.13.0" },
+    { name = "prodigyopt", specifier = ">=1.1.2" },
     { name = "python-dotenv", specifier = ">=1.1.0" },
     { name = "ranger21", git = "https://github.com/lessw2020/Ranger21.git" },
     { name = "rerun-sdk", specifier = ">=0.22.1" },

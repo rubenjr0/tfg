@@ -12,6 +12,7 @@ dependencies = [
     "h5py>=3.13.0",
     "lightning>=2.5.1",
     "neptune>=1.13.0",
+    "prodigyopt>=1.1.2",
     "python-dotenv>=1.1.0",
     "ranger21",
     "rerun-sdk>=0.22.1",

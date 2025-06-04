@@ -7,6 +7,7 @@ from neptune.types import File
 
 # from torch.nn import functional as F
 from ranger21 import Ranger21
+from prodigyopt import Prodigy
 
 from .layers import Encoder
 from .unet import UNet
@@ -168,7 +169,13 @@ class UncertaintyEstimator(LightningModule):
             logger.experiment["val/ref_var"].append(File.as_image(to_img(ref_var)))
 
     def configure_optimizers(self):
-        if self.optimizer_name == "ranger":
+        if self.optimizer_name == "prodigy":
+            opt = Prodigy(self.parameters(), lr=1.0, weight_decay=1e-3)
+            sched = torch.optim.lr_scheduler.CosineAnnealingLR(
+                opt, T_max=self.trainer.estimated_stepping_batches
+            )
+            return [opt], [sched]
+        elif self.optimizer_name == "ranger":
             batches_per_epoch = (
                 self.trainer.estimated_stepping_batches / self.trainer.max_epochs
             )
@@ -181,7 +188,7 @@ class UncertaintyEstimator(LightningModule):
                 weight_decay=5e-4,
             )
             return opt
-        else:
+        elif self.optimizer_name == "adamw":
             opt = torch.optim.AdamW(self.parameters(), lr=5e-5, weight_decay=5e-4)
             sched = torch.optim.lr_scheduler.ReduceLROnPlateau(
                 opt,
