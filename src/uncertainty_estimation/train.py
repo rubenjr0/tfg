@@ -6,9 +6,8 @@ import torch
 from dotenv import load_dotenv
 from lightning.pytorch import callbacks as CB
 from lightning.pytorch import strategies as ST
-from torch.utils.data import DataLoader
 from sklearn.model_selection import train_test_split
-
+from torch.utils.data import DataLoader
 
 from uncertainty_estimation.data import ImageDepthDataset
 from uncertainty_estimation.model import UncertaintyEstimator
@@ -28,6 +27,7 @@ def train():
     act = getenv("ACTIVATION", "gelu").lower()
     max_epochs = int(getenv("MAX_EPOCHS", "100"))
     batch_size = int(getenv("BATCH_SIZE", "16"))
+    early_stop = int(getenv("EARLY_STOP", "true")).lower() == "true"
 
     train_folders = os.listdir("data/train")
     train_folders, val_folders = train_test_split(
@@ -64,8 +64,9 @@ def train():
 
     callbacks = [
         CB.LearningRateMonitor(logging_interval="epoch"),
-        CB.EarlyStopping("val/corr", patience=8, verbose=True),
     ]
+    if early_stop:
+        callbacks.append(CB.EarlyStopping("val/loss", patience=3, verbose=True))
     if opt == "adamw":
         callbacks.append(CB.StochasticWeightAveraging(swa_lrs=4e-4))
     model = UncertaintyEstimator(activation=act, optimizer=opt)
@@ -74,7 +75,7 @@ def train():
         log_every_n_steps=2,
         logger=logger,
         # fast_dev_run=True,
-        gradient_clip_val=1.0 if opt == "adamw" else None,
+        gradient_clip_val=None if opt == "ranger" else 1.0,
         detect_anomaly=False,
         precision="16-mixed",
         strategy=ST.DDPStrategy(find_unused_parameters=True),

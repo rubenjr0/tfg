@@ -17,11 +17,9 @@ class ImageDepthDataset(Dataset):
         root: str,
         folders: list[str] = [],
         preprocess: bool = False,
-        noise_std_range: tuple[float, float] = (0.001, 0.01),
     ):
         super().__init__()
         self.preprocess = preprocess
-        self.noise_std_range = noise_std_range
         if len(folders) > 0:
             all = [
                 f
@@ -47,11 +45,6 @@ class ImageDepthDataset(Dataset):
                 T.Resize((256, 256)),
             ]
         )
-        self.augmentations = T.Compose(
-            [
-                T.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
-            ]
-        )
 
     def _aug(self, image, do_hflip: bool, do_rotate: bool, rotate_angle: float):
         if do_hflip:
@@ -70,9 +63,7 @@ class ImageDepthDataset(Dataset):
         if np.isnan(image).any() or np.isnan(depth).any():
             return self.__getitem__((idx + 1) % len(self))
 
-        image = self.augmentations(image)
         image = self.transform(image)
-        image = T.functional.gaussian_noise(image, sigma=0.05)
 
         depth = self.transform(depth)
         depth_edges, depth_laplacian, _ = process_depth(depth.permute(1, 2, 0))
@@ -88,14 +79,6 @@ class ImageDepthDataset(Dataset):
             est_edges = self.transform(est_edges)
             est_laplacian = self.transform(est_laplacian)
 
-            noise_std = random.uniform(*self.noise_std_range)
-            noisy_depth = depth + torch.randn_like(depth) * noise_std
-            noisy_edges, noisy_laplacian, _ = process_depth(
-                noisy_depth.permute(1, 2, 0)
-            )
-            noisy_edges = self.transform(noisy_edges)
-            noisy_laplacian = self.transform(noisy_laplacian)
-
             # Perform the same augmentations in the same way
             do_hflip = random.random() > 0.5
             do_rotate = random.random() > 0.5
@@ -107,17 +90,10 @@ class ImageDepthDataset(Dataset):
             est = self._aug(est, do_hflip, do_rotate, r_angle)
             est_edges = self._aug(est_edges, do_hflip, do_rotate, r_angle)
             est_laplacian = self._aug(est_laplacian, do_hflip, do_rotate, r_angle)
-            noisy_depth = self._aug(noisy_depth, do_hflip, do_rotate, r_angle)
-            noisy_edges = self._aug(noisy_edges, do_hflip, do_rotate, r_angle)
-            noisy_laplacian = self._aug(noisy_laplacian, do_hflip, do_rotate, r_angle)
 
             output["est"] = est
             output["est_edges"] = est_edges
             output["est_laplacian"] = est_laplacian
-            output["noise_std"] = noise_std
-            output["noisy_depth"] = noisy_depth
-            output["noisy_edges"] = noisy_edges
-            output["noisy_laplacian"] = noisy_laplacian
         else:
             output["image_path"] = rgb_path
 

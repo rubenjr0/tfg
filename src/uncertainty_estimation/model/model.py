@@ -1,13 +1,12 @@
 from os import getenv
+
 import numpy as np
 import rerun as rr
 import torch
 from lightning import LightningModule
 from neptune.types import File
-
-# from torch.nn import functional as F
-from ranger21 import Ranger21
 from prodigyopt import Prodigy
+from ranger21 import Ranger21
 
 from .layers import Encoder
 from .unet import UNet
@@ -24,7 +23,7 @@ class UncertaintyEstimator(LightningModule):
         self.optimizer_name = optimizer
 
         self.estimated_w = 1.0
-        self.reference_w = 0.15
+        self.reference_w = 1e-3
         self.curriculum_epochs = curriculum_epochs
         self.rerun_logging = getenv("USE_RERUN", "false").lower() == "true"
 
@@ -40,19 +39,14 @@ class UncertaintyEstimator(LightningModule):
     def nll_loss(
         self,
         estimated_variance: torch.Tensor,
-        target: torch.Tensor,
+        ground_truth: torch.Tensor,
+        observation: torch.Tensor,
         eps: float = 1e-6,
     ):
         safe_var = torch.maximum(torch.tensor(eps), estimated_variance)
-        log = 0.5 * torch.log(2 * torch.pi * safe_var)
-        quad = target / (2 * safe_var)
-        nll_loss = (log + quad).mean()
-        return nll_loss
-
-    def total_variance_loss(self, variance_map):
         return torch.mean(
-            (variance_map[:, :, 1:, :] - variance_map[:, :, :-1, :]) ** 2
-        ) + torch.mean((variance_map[:, :, :, 1:] - variance_map[:, :, :, :-1]) ** 2)
+            torch.log(safe_var) + torch.abs(ground_truth - observation) / safe_var
+        )
 
     def step(self, split: str, batch):
         image = batch["image"]
@@ -62,26 +56,18 @@ class UncertaintyEstimator(LightningModule):
         observation = batch["est"]
         observation_edges = batch["est_edges"]
         observation_laplacian = batch["est_laplacian"]
-        noise_std = batch["noise_std"]
-        noisy_depth = batch["noisy_depth"]
-        noisy_edges = batch["noisy_edges"]
-        noisy_laplacian = batch["noisy_laplacian"]
 
         estimated_variance = self(
             image, observation, observation_edges, observation_laplacian
         )
 
-        reference_variance = self(image, noisy_depth, noisy_edges, noisy_laplacian)
-
-        difference = (depth - observation) ** 2
+        reference_variance = self(image, depth, depth_edges, depth_laplacian)
 
         # Estimated depth variance loss
-        estimated_nll_loss = self.nll_loss(estimated_variance, difference)
+        estimated_nll_loss = self.nll_loss(estimated_variance, depth, observation)
 
         # Ground truth depth variance loss (should be close to zero)
-        noise_var = noise_std.view(-1, 1, 1, 1) ** 2
-        target_variance = torch.ones_like(difference) * noise_var
-        reference_nll_loss = self.nll_loss(reference_variance, target_variance)
+        reference_nll_loss = self.nll_loss(reference_variance, depth, depth)
         reference_w = (
             min(1.0, self.trainer.current_epoch / self.curriculum_epochs)
             * self.reference_w
@@ -99,7 +85,6 @@ class UncertaintyEstimator(LightningModule):
                 f"{split}/loss/reference_var",
                 rr.Scalars(reference_nll_loss.detach().cpu()),
             )
-            # rr.log(f"{split}/loss/total", rr.Scalars(tv_loss.detach().cpu()))
         self.log(f"{split}/loss", loss, sync_dist=True)
         self.log(f"{split}/estimated_var_loss", estimated_nll_loss, sync_dist=True)
         self.log(f"{split}/reference_var_loss", reference_nll_loss, sync_dist=True)
