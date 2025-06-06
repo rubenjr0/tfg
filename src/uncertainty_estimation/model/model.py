@@ -158,13 +158,7 @@ class UncertaintyEstimator(LightningModule):
             logger.experiment["val/ref_var"].append(File.as_image(to_img(ref_var)))
 
     def configure_optimizers(self):
-        if self.optimizer_name == "prodigy":
-            opt = Prodigy(self.parameters(), lr=1.0, d_coef=0.1, weight_decay=1e-3)
-            sched = torch.optim.lr_scheduler.CosineAnnealingLR(
-                opt, T_max=self.trainer.estimated_stepping_batches
-            )
-            return [opt], [sched]
-        elif self.optimizer_name == "ranger":
+        if self.optimizer_name == "ranger":
             batches_per_epoch = (
                 self.trainer.estimated_stepping_batches / self.trainer.max_epochs
             )
@@ -177,24 +171,19 @@ class UncertaintyEstimator(LightningModule):
                 weight_decay=5e-4,
             )
             return opt
-        elif self.optimizer_name == "adamw":
-            opt = torch.optim.AdamW(self.parameters(), lr=5e-5, weight_decay=5e-4)
-            sched = torch.optim.lr_scheduler.ReduceLROnPlateau(
-                opt,
-                mode="min",
-                factor=0.7,
-                patience=3,
-                min_lr=1e-6,
-            )
-            return {
-                "optimizer": opt,
-                "lr_scheduler": {
-                    "scheduler": sched,
-                    "interval": "epoch",
-                    "frequency": 1,
-                    "monitor": "val/loss",
-                    "strict": True,
-                },
-            }
         else:
-            return ValueError("No valid optimizer was specified")
+            if self.optimizer_name == "adam":
+                opt = torch.optim.Adam(self.parameters(), lr=5e-5, weight_decay=1e-3)
+            elif self.optimizer_name == "adamw":
+                opt = torch.optim.AdamW(self.parameters(), lr=5e-5, weight_decay=1e-3)
+            elif self.optimizer_name == "radam":
+                opt = torch.optim.RAdam(self.parameters(), lr=5e-5, weight_decay=1e-3)
+            elif self.optimizer_name == "prodigy":
+                opt = Prodigy(self.parameters(), lr=1.0, d_coef=0.1, weight_decay=1e-3)
+            else:
+                return ValueError("No valid optimizer was specified")
+            sched = torch.optim.lr_scheduler.CosineAnnealingLR(
+                opt, T_max=self.trainer.estimated_stepping_batches
+            )
+            return [opt], [sched]
+         

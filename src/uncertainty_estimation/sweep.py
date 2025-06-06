@@ -24,7 +24,7 @@ def objective(trial: optuna.Trial):
         "activation function", ["gelu", "silu", "mish", "relu"]
     )
     optimizer: str = trial.suggest_categorical(
-        "optimizer", ["prodigy", "ranger", "adamw"]
+        "optimizer", ["adam", "adamw", "radam", "prodigy", "ranger"]
     )
     batch_size: int = trial.suggest_categorical("batch size", [16, 32])
     estimated_loss_w: float = trial.suggest_float("estimated loss weight", 0.5, 2.0)
