@@ -43,7 +43,7 @@ def objective(trial: optuna.Trial):
         optimizer_name=optimizer,
         estimated_loss_w=estimated_loss_w,
         reference_loss_w=reference_loss_w,
-        batch_size=batch_size
+        batch_size=batch_size,
     )
     data_module = UncertaintyDatamodule(seed=SEED, batch_size=batch_size)
     logger = NeptuneLogger(api_key=neptune_key, project=project)
@@ -57,14 +57,20 @@ def objective(trial: optuna.Trial):
         gradient_clip_val=1.0,
         callbacks=[
             CB.LearningRateMonitor(logging_interval="epoch"),
-             CB.ModelCheckpoint(
+            CB.ModelCheckpoint(
                 dirpath="checkpoints",
                 filename="best_{epoch}_corr={val/corr:.2f}_loss={val/loss:.2f}",
                 monitor="val/corr",
                 mode="min",
                 auto_insert_metric_name=False,
             ),
-            CB.EarlyStopping(monitor="val/loss", patience=3, verbose=True),
+            CB.EarlyStopping(
+                monitor="val/loss",
+                patience=3,
+                min_delta=0.01,
+                divergence_threshold=1.5,
+                verbose=True,
+            ),
             pruner,
         ],
     )
@@ -94,4 +100,3 @@ def run_sweep(n_trials=50):
 if __name__ == "__main__":
     print("Running optuna sweep...")
     run_sweep()
-   
