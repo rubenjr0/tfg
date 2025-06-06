@@ -3,11 +3,11 @@ from os import getenv
 import lightning as L
 import neptune  # noqa: F401
 import optuna
-from optuna_integration import PyTorchLightningPruningCallback
 from dotenv import load_dotenv
 from lightning.pytorch import callbacks as CB
 from lightning.pytorch import strategies as ST
 from lightning.pytorch.loggers import NeptuneLogger
+from optuna_integration import PyTorchLightningPruningCallback
 
 from uncertainty_estimation.data import UncertaintyDatamodule
 from uncertainty_estimation.model import UncertaintyEstimator
@@ -58,7 +58,7 @@ def objective(trial: optuna.Trial):
                 auto_insert_metric_name=False,
             ),
             CB.EarlyStopping(monitor="val/loss", patience=5, verbose=True),
-            pruner
+            pruner,
         ],
     )
     trainer.fit(lightning_module, data_module)
@@ -68,7 +68,10 @@ def objective(trial: optuna.Trial):
 
 def run_sweep(n_trials=10):
     pruner = optuna.pruners.MedianPruner(n_warmup_steps=10)
-    study = optuna.create_study(direction="minimize", pruner=pruner)
+    storage = optuna.storages.RDBStorage(
+        url="sqlite:///:memory:",
+    )
+    study = optuna.create_study(direction="minimize", storage=storage, pruner=pruner)
     study.optimize(objective, n_trials=n_trials)
 
     print("Best trial:")
