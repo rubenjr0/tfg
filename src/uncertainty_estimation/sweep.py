@@ -6,6 +6,7 @@ import optuna
 from dotenv import load_dotenv
 from lightning.pytorch import callbacks as CB
 from lightning.pytorch.loggers import NeptuneLogger
+from lightning.pytorch.strategies import DDPStrategy
 from optuna_integration import PyTorchLightningPruningCallback
 
 from uncertainty_estimation.data import UncertaintyDatamodule
@@ -51,7 +52,7 @@ def objective(trial: optuna.Trial):
         logger=logger,
         precision="16-mixed",
         log_every_n_steps=10,
-        strategy="ddp_spawn",
+        strategy=DDPStrategy(find_unused_parameters=True, start_method="spawn"),
         gradient_clip_val=1.0,
         callbacks=[
             CB.LearningRateMonitor(logging_interval="epoch"),
@@ -107,7 +108,7 @@ if __name__ == "__main__":
         logger=logger,
         precision="16-mixed",
         devices=-1,
-        strategy="ddp_spawn",
+        strategy=DDPStrategy(find_unused_parameters=True, start_method="spawn"),
         gradient_clip_val=1.0,
         callbacks=[
             CB.LearningRateMonitor(logging_interval="epoch"),
