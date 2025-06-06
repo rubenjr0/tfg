@@ -52,7 +52,7 @@ def objective(trial: optuna.Trial):
         logger=logger,
         precision="16-mixed",
         log_every_n_steps=10,
-        strategy=ST.DDPStrategy(find_unused_parameters=True),
+        strategy=ST.DDPStrategy(start_method="spawn", find_unused_parameters=True),
         gradient_clip_val=1.0,
         callbacks=[
             CB.LearningRateMonitor(logging_interval="epoch"),
