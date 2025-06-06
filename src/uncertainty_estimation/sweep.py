@@ -45,6 +45,7 @@ def objective(trial: optuna.Trial):
         max_epochs=30,
         logger=logger,
         precision="16-mixed",
+        devices=-1,
         strategy=ST.DDPStrategy(find_unused_parameters=True),
         gradient_clip_val=1.0,
         callbacks=[
