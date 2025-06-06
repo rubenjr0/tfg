@@ -11,6 +11,12 @@ from lightning.pytorch.loggers import NeptuneLogger
 from uncertainty_estimation.data import UncertaintyDatamodule
 from uncertainty_estimation.model import UncertaintyEstimator
 
+
+class MyCLI(LightningCLI):
+    def add_arguments_to_parser(self, parser):
+        parser.add_argument('--sweep', default=False)
+
+
 SEED = 42
 
 
@@ -32,7 +38,7 @@ if use_rerun:
 
     rr.init("uncertainty-predictor", spawn=True)
 
-cli = LightningCLI(
+cli = MyCLI(
     model_class=UncertaintyEstimator,
     datamodule_class=UncertaintyDatamodule,
     args=None,
@@ -114,7 +120,7 @@ def run_sweep(n_trials=10):
 
 
 if __name__ == "__main__":
-    if "sweep" in sys.argv:
+    if cli.config["sweep"]:
         run_sweep()
     else:
         train()
