@@ -27,7 +27,7 @@ def train():
     act = getenv("ACTIVATION", "gelu").lower()
     max_epochs = int(getenv("MAX_EPOCHS", "100"))
     batch_size = int(getenv("BATCH_SIZE", "16"))
-    early_stop = int(getenv("EARLY_STOP", "true")).lower() == "true"
+    early_stop = getenv("EARLY_STOP", "true").lower() == "true"
 
     train_folders = os.listdir("data/train")
     train_folders, val_folders = train_test_split(
@@ -64,9 +64,16 @@ def train():
 
     callbacks = [
         CB.LearningRateMonitor(logging_interval="epoch"),
+        CB.ModelCheckpoint(
+            dirpath="checkpoints/",
+            filename="{epoch}_corr={val/corr:.2f}_loss={val/loss:.2f}",
+            monitor="val/corr",
+            mode="max",
+            auto_insert_metric_name=False,
+        ),
     ]
     if early_stop:
-        callbacks.append(CB.EarlyStopping("val/loss", patience=3, verbose=True))
+        callbacks.append(CB.EarlyStopping("val/loss", patience=5, verbose=True))
     if opt == "adamw":
         callbacks.append(CB.StochasticWeightAveraging(swa_lrs=4e-4))
     model = UncertaintyEstimator(activation=act, optimizer=opt)

@@ -13,7 +13,7 @@ from .unet import UNet
 
 
 class UncertaintyEstimator(LightningModule):
-    def __init__(self, activation: str, optimizer: str, curriculum_epochs: int = 20):
+    def __init__(self, activation: str, optimizer: str, curriculum_epochs: int = 15):
         super().__init__()
         self.save_hyperparameters("activation", "optimizer", "curriculum_epochs")
         self.rgb_encoder = Encoder(in_dims=3, out_dims=16, act=activation)
@@ -71,6 +71,7 @@ class UncertaintyEstimator(LightningModule):
         reference_w = (
             min(1.0, self.trainer.current_epoch / self.curriculum_epochs)
             * self.reference_w
+            / image.size(0)
         )
 
         loss = self.estimated_w * estimated_nll_loss + reference_w * reference_nll_loss
