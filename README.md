@@ -16,4 +16,4 @@ https://github.com/apple/ml-hypersim
 
 Or a sweep:
 
-`uv run src/uncertainty_estimation/train.py --sweep True --config trainer_config.yaml`
+`uv run src/uncertainty_estimation/sweep.py`
