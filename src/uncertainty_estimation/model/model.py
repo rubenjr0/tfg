@@ -159,7 +159,7 @@ class UncertaintyEstimator(LightningModule):
 
     def configure_optimizers(self):
         if self.optimizer_name == "prodigy":
-            opt = Prodigy(self.parameters(), lr=1.0, weight_decay=1e-3)
+            opt = Prodigy(self.parameters(), lr=1.0, d_coef=0.1, weight_decay=1e-3)
             sched = torch.optim.lr_scheduler.CosineAnnealingLR(
                 opt, T_max=self.trainer.estimated_stepping_batches
             )
