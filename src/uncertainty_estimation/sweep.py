@@ -68,7 +68,6 @@ def objective(trial: optuna.Trial):
                 monitor="val/loss",
                 patience=3,
                 min_delta=0.01,
-                divergence_threshold=1.5,
                 verbose=True,
             ),
             pruner,
