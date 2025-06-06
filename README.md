@@ -4,6 +4,11 @@
 - [x] Modelo de estimación de incertidumbre
 - [x] Pipeline
 
+Sweep:
+- [x] test/corr en vez de val/corr
+- [x] LR hiper param
+- [x] Siren activation
+
 Idea: Predecir offset/media además de la varianza?
 
 ## Dataset

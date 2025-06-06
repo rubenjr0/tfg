@@ -1,5 +1,6 @@
 from os import getenv
 
+import joblib
 import lightning as L
 import neptune  # noqa: F401
 import optuna
@@ -21,20 +22,27 @@ project = getenv("NEPTUNE_PROJECT")
 
 def objective(trial: optuna.Trial):
     activation: str = trial.suggest_categorical(
-        "activation function", ["gelu", "silu", "mish", "relu"]
+        "activation function", ["relu", "silu", "gelu", "mish", "siren"]
     )
     optimizer: str = trial.suggest_categorical(
         "optimizer", ["adam", "adamw", "radam", "prodigy", "ranger"]
     )
     batch_size: int = trial.suggest_categorical("batch size", [16, 32])
-    estimated_loss_w: float = trial.suggest_float("estimated loss weight", 0.5, 2.0)
+    if optimizer == "prodigy":
+        learning_rate = 1.0
+    else:
+        learning_rate: float = trial.suggest_float(
+            "learning rate", 1e-5, 1e-3, log=True
+        )
+    estimated_loss_w: float = trial.suggest_float("estimated loss weight", 0.5, 4.0)
     reference_loss_w: float = trial.suggest_float(
-        "reference loss weight", 1e-6, 0.1, log=True
+        "reference loss weight", 1e-8, 0.5, log=True
     )
     print("Running trial with:")
     print("\t- Activation:", activation)
     print("\t- Optimizer:", optimizer)
     print("\t- Batch Size:", batch_size)
+    print("\t- Learning rate:", learning_rate)
     print("\t- Estimated loss weight:", estimated_loss_w)
     print("\t- Reference loss weight:", reference_loss_w)
     lightning_module = UncertaintyEstimator(
@@ -64,12 +72,6 @@ def objective(trial: optuna.Trial):
                 mode="min",
                 auto_insert_metric_name=False,
             ),
-            CB.EarlyStopping(
-                monitor="val/loss",
-                patience=3,
-                min_delta=0.01,
-                verbose=True,
-            ),
             pruner,
         ],
     )
@@ -79,7 +81,7 @@ def objective(trial: optuna.Trial):
 
 
 def run_sweep(n_trials=50):
-    pruner = optuna.pruners.MedianPruner(n_warmup_steps=10)
+    pruner = optuna.pruners.MedianPruner(n_warmup_steps=4)
     storage = optuna.storages.RDBStorage(
         url="sqlite:///optuna_sweep_db.sqlite",
     )
@@ -87,7 +89,7 @@ def run_sweep(n_trials=50):
     study.optimize(objective, n_trials=n_trials, n_jobs=1)
 
     print("Best trial:")
-    trial = study.best_trial
+    trial: optuna.Trial = study.best_trial
     print(f"\tValue: {trial.value}")
     print("\tParameters:")
     for k, v in trial.params.items():
@@ -98,4 +100,5 @@ def run_sweep(n_trials=50):
 
 if __name__ == "__main__":
     print("Running optuna sweep...")
-    run_sweep()
+    study = run_sweep()
+    joblib.dump(study, "study.pkl")

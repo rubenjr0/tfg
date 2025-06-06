@@ -10,6 +10,7 @@ requires-python = ">=3.12"
 dependencies = [
     "depth-pro",
     "h5py>=3.13.0",
+    "joblib>=1.5.1",
     "jsonargparse[signatures]>=4.40.0",
     "lightning>=2.5.1",
     "neptune>=1.13.0",

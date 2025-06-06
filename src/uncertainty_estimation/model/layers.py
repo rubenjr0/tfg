@@ -2,6 +2,13 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
+class SirenAct(nn.Module):
+    def __init__(self, w0: float = 30.0):
+        super().__init__()
+        self.w0 = nn.Parameter(torch.tensor(w0))
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return torch.sin(self.w0 * x)
 
 def get_act(act: str):
     return (
@@ -13,6 +20,8 @@ def get_act(act: str):
         if act == "mish"
         else nn.ReLU()
         if act == "relu"
+        else SirenAct()
+        if act == "siren"
         else ValueError(f"Unknown activation function: {act}")
     )
 

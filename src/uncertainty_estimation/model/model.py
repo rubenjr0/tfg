@@ -20,10 +20,10 @@ class UncertaintyEstimator(LightningModule):
         estimated_loss_w: float = 1.0,
         reference_loss_w: float = 1e-3,
         curriculum_epochs: int = 15,
+        learning_rate: float = 1e-4,
         batch_size: int | None = None,
     ):
         super().__init__()
-        self.save_hyperparameters(ignore="model")
         if model is None:
             model = UNet(activation_name)
         self.model = model
@@ -32,7 +32,9 @@ class UncertaintyEstimator(LightningModule):
         self.estimated_loss_w = estimated_loss_w
         self.reference_loss_w = reference_loss_w
         self.curriculum_epochs = curriculum_epochs
+        self.learning_rate = learning_rate
         self.batch_size = batch_size
+        self.save_hyperparameters(ignore="model")
         self.rerun_logging = getenv("USE_RERUN", "false").lower() == "true"
 
     def forward(self, rgb, depth, depth_edges, depth_laplacian):
@@ -166,20 +168,20 @@ class UncertaintyEstimator(LightningModule):
             )
             opt = Ranger21(
                 self.parameters(),
-                lr=5e-5,
+                lr=self.learning_rate,
                 use_madgrad=True,
                 num_epochs=self.trainer.max_epochs,
                 num_batches_per_epoch=batches_per_epoch,
-                weight_decay=5e-4,
+                weight_decay=1e-3,
             )
             return opt
         else:
             if self.optimizer_name == "adam":
-                opt = torch.optim.Adam(self.parameters(), lr=5e-5, weight_decay=1e-3)
+                opt = torch.optim.Adam(self.parameters(), lr=self.learning_rate, weight_decay=1e-3)
             elif self.optimizer_name == "adamw":
-                opt = torch.optim.AdamW(self.parameters(), lr=5e-5, weight_decay=1e-3)
+                opt = torch.optim.AdamW(self.parameters(), lr=self.learning_rate, weight_decay=1e-3)
             elif self.optimizer_name == "radam":
-                opt = torch.optim.RAdam(self.parameters(), lr=5e-5, weight_decay=1e-3)
+                opt = torch.optim.RAdam(self.parameters(), lr=self.learning_rate, weight_decay=1e-3)
             elif self.optimizer_name == "prodigy":
                 opt = Prodigy(self.parameters(), lr=1.0, d_coef=0.1, weight_decay=1e-3)
             else:

@@ -2125,6 +2125,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "depth-pro" },
     { name = "h5py" },
+    { name = "joblib" },
     { name = "jsonargparse", extra = ["signatures"] },
     { name = "lightning" },
     { name = "neptune" },
@@ -2150,6 +2151,7 @@ dev = [
 requires-dist = [
     { name = "depth-pro", git = "https://github.com/apple/ml-depth-pro" },
     { name = "h5py", specifier = ">=3.13.0" },
+    { name = "joblib", specifier = ">=1.5.1" },
     { name = "jsonargparse", extras = ["signatures"], specifier = ">=4.40.0" },
     { name = "lightning", specifier = ">=2.5.1" },
     { name = "neptune", specifier = ">=1.13.0" },
