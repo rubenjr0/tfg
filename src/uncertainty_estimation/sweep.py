@@ -108,7 +108,7 @@ if __name__ == "__main__":
         logger=logger,
         precision="16-mixed",
         devices=-1,
-        strategy=ST.DDPStrategy(find_unused_parameters=True),
+        strategy=ST.DDPStrategy(start_method="spawn", find_unused_parameters=True),
         gradient_clip_val=1.0,
         callbacks=[
             CB.LearningRateMonitor(logging_interval="epoch"),
