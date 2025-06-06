@@ -54,7 +54,7 @@ def objective(trial: optuna.Trial):
         batch_size=batch_size,
     )
     data_module = UncertaintyDatamodule(seed=SEED, batch_size=batch_size)
-    logger = NeptuneLogger(api_key=neptune_key, project=project)
+    logger = NeptuneLogger(api_key=neptune_key, project=project, name=f"tfg-sweep-{trial.number}")
     pruner = PyTorchLightningPruningCallback(trial, monitor="val/corr")
     trainer = L.Trainer(
         max_epochs=30,
