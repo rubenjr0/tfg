@@ -88,8 +88,8 @@ def objective(trial: optuna.Trial):
     )
     batch_size: int = trial.suggest_categorical("batch size", [16, 32])
     estimated_loss_w: float = trial.suggest_float("estimated loss weight", 0.5, 2.0)
-    reference_loss_w: float = trial.suggest_loguniform(
-        "reference loss weight", 1e-6, 0.1
+    reference_loss_w: float = trial.suggest_float(
+        "reference loss weight", 1e-6, 0.1, log=True
     )
     lightning_module = UncertaintyEstimator(
         model=None,
