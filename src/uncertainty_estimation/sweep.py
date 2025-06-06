@@ -5,7 +5,6 @@ import neptune  # noqa: F401
 import optuna
 from dotenv import load_dotenv
 from lightning.pytorch import callbacks as CB
-from lightning.pytorch import strategies as ST
 from lightning.pytorch.loggers import NeptuneLogger
 from optuna_integration import PyTorchLightningPruningCallback
 
@@ -31,12 +30,12 @@ def objective(trial: optuna.Trial):
     reference_loss_w: float = trial.suggest_float(
         "reference loss weight", 1e-6, 0.1, log=True
     )
-    print('Running trial with:')
-    print('\t- Activation:', activation)
-    print('\t- Optimizer:', optimizer)
-    print('\t- Batch Size:', batch_size)
-    print('\t- Estimated loss weight:', estimated_loss_w)
-    print('\t- Reference loss weight:', reference_loss_w)
+    print("Running trial with:")
+    print("\t- Activation:", activation)
+    print("\t- Optimizer:", optimizer)
+    print("\t- Batch Size:", batch_size)
+    print("\t- Estimated loss weight:", estimated_loss_w)
+    print("\t- Reference loss weight:", reference_loss_w)
     lightning_module = UncertaintyEstimator(
         model=None,
         activation_name=activation,
@@ -52,7 +51,7 @@ def objective(trial: optuna.Trial):
         logger=logger,
         precision="16-mixed",
         log_every_n_steps=10,
-        strategy=ST.DDPStrategy(start_method="spawn", find_unused_parameters=True),
+        strategy="ddp_spawn",
         gradient_clip_val=1.0,
         callbacks=[
             CB.LearningRateMonitor(logging_interval="epoch"),
@@ -91,8 +90,8 @@ def run_sweep(n_trials=10):
 
 
 if __name__ == "__main__":
-    print('Running optuna sweep...')
-    study =  run_sweep()
+    print("Running optuna sweep...")
+    study = run_sweep()
     best_params = study.best_trial.params
     lightning_module = UncertaintyEstimator(
         model=None,
@@ -108,7 +107,7 @@ if __name__ == "__main__":
         logger=logger,
         precision="16-mixed",
         devices=-1,
-        strategy=ST.DDPStrategy(start_method="spawn", find_unused_parameters=True),
+        strategy="ddp_spawn",
         gradient_clip_val=1.0,
         callbacks=[
             CB.LearningRateMonitor(logging_interval="epoch"),
@@ -123,4 +122,3 @@ if __name__ == "__main__":
     )
     trainer.fit(lightning_module, data_module)
     trainer.test(lightning_module, data_module)
-
