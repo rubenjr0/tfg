@@ -10,8 +10,11 @@ requires-python = ">=3.12"
 dependencies = [
     "depth-pro",
     "h5py>=3.13.0",
+    "jsonargparse[signatures]>=4.40.0",
     "lightning>=2.5.1",
     "neptune>=1.13.0",
+    "optuna>=4.3.0",
+    "optuna-integration[pytorch-lightning]>=4.3.0",
     "prodigyopt>=1.1.2",
     "python-dotenv>=1.1.0",
     "ranger21",
@@ -22,9 +25,6 @@ dependencies = [
     "torchvision>=0.21.0",
 ]
 
-[project.scripts]
-train = "uncertainty_estimation:train"
-preprocess = "uncertainty_estimation:preprocess"
 
 [dependency-groups]
 dev = [
@@ -36,6 +36,3 @@ dev = [
 depth-pro = { git = "https://github.com/apple/ml-depth-pro" }
 ranger21 = { git = "https://github.com/lessw2020/Ranger21.git" }
 
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"

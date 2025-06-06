@@ -1,11 +1,15 @@
 import random
 from glob import glob
+from os import listdir
+from pathlib import Path
 
 import h5py
 import numpy as np
 import torch
+from lightning import LightningDataModule
 from PIL import Image
-from torch.utils.data import Dataset
+from sklearn.model_selection import train_test_split
+from torch.utils.data import DataLoader, Dataset
 from torchvision.transforms import v2 as T
 
 from uncertainty_estimation.utils import process_depth
@@ -14,7 +18,7 @@ from uncertainty_estimation.utils import process_depth
 class ImageDepthDataset(Dataset):
     def __init__(
         self,
-        root: str,
+        root: str = "data/",
         folders: list[str] = [],
         preprocess: bool = False,
     ):
@@ -103,3 +107,38 @@ class ImageDepthDataset(Dataset):
         output["depth_laplacian"] = depth_laplacian
 
         return output
+
+
+class UncertaintyDatamodule(LightningDataModule):
+    def __init__(self, seed: int = 42, data_dir: str = "data/", batch_size: int = 16):
+        super().__init__()
+        self.batch_size = batch_size
+        data_dir = Path(data_dir)
+        self.train_dir = data_dir / "train"
+        self.test_dir = data_dir / "test"
+        train_folders = listdir(self.train_dir)
+        self.train_folders, self.val_folders = train_test_split(
+            train_folders, train_size=0.8, random_state=seed
+        )
+
+    def setup(self, stage: str):
+        self.train_data = ImageDepthDataset(
+            root=self.train_dir, folders=self.train_folders
+        )
+        self.val_data = ImageDepthDataset(root=self.train_dir, folders=self.val_folders)
+        self.test_data = ImageDepthDataset(root=self.test_dir)
+
+    def train_dataloader(self):
+        return DataLoader(
+            self.train_data, batch_size=self.batch_size, shuffle=True, num_workers=12
+        )
+
+    def val_dataloader(self):
+        return DataLoader(
+            self.val_data, batch_size=self.batch_size, shuffle=False, num_workers=12
+        )
+
+    def test_dataloader(self):
+        return DataLoader(
+            self.test_data, batch_size=self.batch_size, shuffle=False, num_workers=12
+        )

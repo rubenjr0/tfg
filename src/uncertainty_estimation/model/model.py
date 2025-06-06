@@ -8,33 +8,33 @@ from neptune.types import File
 from prodigyopt import Prodigy
 from ranger21 import Ranger21
 
-from .layers import Encoder
 from .unet import UNet
 
 
 class UncertaintyEstimator(LightningModule):
-    def __init__(self, activation: str, optimizer: str, curriculum_epochs: int = 15):
+    def __init__(
+        self,
+        model: None | UNet = None,
+        activation_name: str = "relu",
+        optimizer_name: str = "adamw",
+        estimated_loss_w: float = 1.0,
+        reference_loss_w: float = 1e-3,
+        curriculum_epochs: int = 15,
+    ):
         super().__init__()
-        self.save_hyperparameters("activation", "optimizer", "curriculum_epochs")
-        self.rgb_encoder = Encoder(in_dims=3, out_dims=16, act=activation)
-        self.stack_encoder = Encoder(in_dims=3, out_dims=16, act=activation)
-        self.model = UNet(in_dims=32, out_dims=1, act=activation)
-        self.activation = activation
-        self.optimizer_name = optimizer
-
-        self.estimated_w = 1.0
-        self.reference_w = 1e-3
+        self.save_hyperparameters(ignore="model")
+        if model is None:
+            model = UNet(activation_name)
+        self.model = model
+        self.activation_name = activation_name
+        self.optimizer_name = optimizer_name
+        self.estimated_loss_w = estimated_loss_w
+        self.reference_loss_w = reference_loss_w
         self.curriculum_epochs = curriculum_epochs
         self.rerun_logging = getenv("USE_RERUN", "false").lower() == "true"
 
     def forward(self, rgb, depth, depth_edges, depth_laplacian):
-        stack = torch.cat([depth, depth_edges, depth_laplacian], dim=1)
-        rgb = self.rgb_encoder(rgb)
-        stack = self.stack_encoder(stack)
-        x = torch.cat([rgb, stack], dim=1)
-        x = self.model(x)
-        x = x.clamp(-6, 6).exp()
-        return x
+        return self.model(rgb, depth, depth_edges, depth_laplacian)
 
     def nll_loss(
         self,
@@ -68,13 +68,16 @@ class UncertaintyEstimator(LightningModule):
 
         # Ground truth depth variance loss (should be close to zero)
         reference_nll_loss = self.nll_loss(reference_variance, depth, depth)
-        reference_w = (
+        reference_loss_w = (
             min(1.0, self.trainer.current_epoch / self.curriculum_epochs)
-            * self.reference_w
+            * self.reference_loss_w
             / image.size(0)
         )
 
-        loss = self.estimated_w * estimated_nll_loss + reference_w * reference_nll_loss
+        loss = (
+            self.estimated_loss_w * estimated_nll_loss
+            + reference_loss_w * reference_nll_loss
+        )
 
         if self.rerun_logging:
             rr.log(f"{split}/loss", rr.Scalars(loss.detach().cpu()))
@@ -193,3 +196,5 @@ class UncertaintyEstimator(LightningModule):
                     "strict": True,
                 },
             }
+        else:
+            return ValueError("No valid optimizer was specified")

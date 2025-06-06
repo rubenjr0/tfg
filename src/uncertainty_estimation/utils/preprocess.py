@@ -19,3 +19,7 @@ def preprocess():
         estimated = pipeline.estimate_depth(image)
         estimated = estimated.cpu().numpy()
         np.save(path, estimated)
+
+
+if __name__ == "__main__":
+    preprocess()

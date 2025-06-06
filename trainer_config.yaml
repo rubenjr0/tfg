@@ -1,0 +1,17 @@
+trainer:
+  callbacks:
+  - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+    init_args: 
+      logging_interval: epoch
+  - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+    init_args:
+      dirpath: checkpoints
+      filename: "{epoch}_corr={val/corr:.2f}_loss={val/loss:.2f}"
+      monitor: val/corr
+      mode: max
+      auto_insert_metric_name: False
+  - class_path: lightning.pytorch.callbacks.EarlyStopping
+    init_args: 
+      monitor: val/loss
+      patience: 5
+      verbose: True

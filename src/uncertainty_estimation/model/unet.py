@@ -6,9 +6,12 @@ from . import layers as L
 
 
 class UNet(nn.Module):
-    def __init__(self, in_dims: int, out_dims: int, act: str):
+    def __init__(self, act: str):
         super().__init__()
-        self.down_conv1 = L.ConvBlock(in_dims, 64, act=act, stochastic_prob=0.05)
+        self.rgb_encoder = L.Encoder(in_dims=3, out_dims=16, act=act)
+        self.stack_encoder = L.Encoder(in_dims=3, out_dims=16, act=act)
+
+        self.down_conv1 = L.ConvBlock(32, 64, act=act, stochastic_prob=0.05)
         self.down_conv2 = L.ConvBlock(64, 128, act=act, stochastic_prob=0.1)
         self.down_conv3 = L.ConvBlock(128, 192, act=act, stochastic_prob=0.15)
         self.down_conv4 = L.ConvBlock(192, 256, act=act, stochastic_prob=0.2)
@@ -26,10 +29,10 @@ class UNet(nn.Module):
         self.up_2_dropout = nn.Dropout2d(0.1)
         self.up_3_dropout = nn.Dropout2d(0.1)
 
-        self.unc192 = L.SeparableConv2d(192, out_dims)
-        self.unc128 = L.SeparableConv2d(128, out_dims)
-        self.unc64 = L.SeparableConv2d(64, out_dims)
-        self.unc32 = L.SeparableConv2d(32, out_dims)
+        self.unc192 = L.SeparableConv2d(192, 1)
+        self.unc128 = L.SeparableConv2d(128, 1)
+        self.unc64 = L.SeparableConv2d(64, 1)
+        self.unc32 = L.SeparableConv2d(32, 1)
 
         self.att192 = L.SpatialAttention(192, act)
         self.att128 = L.SpatialAttention(128, act)
@@ -38,7 +41,12 @@ class UNet(nn.Module):
 
         self.scale_weights = nn.Parameter(torch.tensor([0.1, 0.2, 0.3, 0.4]))
 
-    def forward(self, x):
+    def forward(self, rgb, depth, depth_edges, depth_laplacian):
+        depth_stack = torch.cat([depth, depth_edges, depth_laplacian], dim=1)
+        rgb = self.rgb_encoder(rgb)
+        depth_stack = self.stack_encoder(depth_stack)
+        x = torch.cat([rgb, depth_stack], dim=1)
+
         xd1 = F.max_pool2d(self.down_conv1(x), 2)
         xd2 = F.max_pool2d(self.down_conv2(xd1), 2)
         xd3 = F.max_pool2d(self.down_conv3(xd2), 2)
@@ -72,9 +80,10 @@ class UNet(nn.Module):
         unc32 = F.interpolate(unc32, target_size, mode="bilinear", align_corners=False)
 
         weights = F.softmax(self.scale_weights, dim=0)
-        return (
+        out = (
             weights[0] * unc192
             + weights[1] * unc128
             + weights[2] * unc64
             + weights[3] * unc32
         )
+        return out.clamp(-6, 6).exp()
