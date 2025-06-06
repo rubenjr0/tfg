@@ -3,6 +3,7 @@ from os import getenv
 import lightning as L
 import neptune  # noqa: F401
 import optuna
+from optuna_integration import PyTorchLightningPruningCallback
 from dotenv import load_dotenv
 from lightning.pytorch import callbacks as CB
 from lightning.pytorch import strategies as ST
@@ -25,7 +26,7 @@ def objective(trial: optuna.Trial):
     optimizer: str = trial.suggest_categorical(
         "optimizer", ["prodigy", "ranger", "adamw"]
     )
-    batch_size: int = trial.suggest_categorical("batch size", [16, 32])
+    batch_size: int = trial.suggest_categorical("batch size", [16, 32, 64])
     estimated_loss_w: float = trial.suggest_float("estimated loss weight", 0.5, 2.0)
     reference_loss_w: float = trial.suggest_float(
         "reference loss weight", 1e-6, 0.1, log=True
@@ -39,6 +40,7 @@ def objective(trial: optuna.Trial):
     )
     data_module = UncertaintyDatamodule(seed=SEED, batch_size=batch_size)
     logger = NeptuneLogger(api_key=neptune_key, project=project)
+    pruner = PyTorchLightningPruningCallback(trial, monitor="val/corr")
     trainer = L.Trainer(
         max_epochs=30,
         logger=logger,
@@ -55,11 +57,12 @@ def objective(trial: optuna.Trial):
                 auto_insert_metric_name=False,
             ),
             CB.EarlyStopping(monitor="val/loss", patience=5, verbose=True),
+            pruner
         ],
     )
     trainer.fit(lightning_module, data_module)
     results = trainer.test(lightning_module, data_module)
-    return results[0]["test/corr"]
+    return results[0]["val/corr"]
 
 
 def run_sweep(n_trials=10):
