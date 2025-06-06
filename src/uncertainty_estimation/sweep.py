@@ -31,6 +31,12 @@ def objective(trial: optuna.Trial):
     reference_loss_w: float = trial.suggest_float(
         "reference loss weight", 1e-6, 0.1, log=True
     )
+    print('Running trial with:')
+    print('\t- Activation:', activation)
+    print('\t- Optimizer:', optimizer)
+    print('\t- Batch Size:', batch_size)
+    print('\t- Estimated loss weight:', estimated_loss_w)
+    print('\t- Reference loss weight:', reference_loss_w)
     lightning_module = UncertaintyEstimator(
         model=None,
         activation_name=activation,
@@ -45,7 +51,7 @@ def objective(trial: optuna.Trial):
         max_epochs=30,
         logger=logger,
         precision="16-mixed",
-        devices=-1,
+        log_every_n_steps=10,
         strategy=ST.DDPStrategy(find_unused_parameters=True),
         gradient_clip_val=1.0,
         callbacks=[
@@ -85,4 +91,35 @@ def run_sweep(n_trials=10):
 
 
 if __name__ == "__main__":
-    run_sweep()
+    study =  run_sweep()
+    best_params = study.best_trial.params
+    lightning_module = UncertaintyEstimator(
+        model=None,
+        activation_name=best_params["activation function"],
+        optimizer_name=best_params["optimizer"],
+        estimated_loss_w=best_params["estimated loss weight"],
+        reference_loss_w=best_params["reference loss weight"],
+    )
+    data_module = UncertaintyDatamodule(seed=SEED, batch_size=best_params["batch size"])
+    logger = NeptuneLogger(api_key=neptune_key, project=project)
+    trainer = L.Trainer(
+        max_epochs=30,
+        logger=logger,
+        precision="16-mixed",
+        devices=-1,
+        strategy=ST.DDPStrategy(find_unused_parameters=True),
+        gradient_clip_val=1.0,
+        callbacks=[
+            CB.LearningRateMonitor(logging_interval="epoch"),
+            CB.ModelCheckpoint(
+                dirpath="checkpoints",
+                filename="{epoch}_corr={val/corr:.2f}_loss={val/loss:.2f}",
+                monitor="val/corr",
+                mode="min",
+                auto_insert_metric_name=False,
+            ),
+        ],
+    )
+    trainer.fit(lightning_module, data_module)
+    trainer.test(lightning_module, data_module)
+
