@@ -75,10 +75,10 @@ def objective(trial: optuna.Trial):
 def run_sweep(n_trials=10):
     pruner = optuna.pruners.MedianPruner(n_warmup_steps=10)
     storage = optuna.storages.RDBStorage(
-        url="sqlite:///:memory:",
+        url="sqlite:///optuna_sweep_db.sqlite",
     )
     study = optuna.create_study(direction="minimize", storage=storage, pruner=pruner)
-    study.optimize(objective, n_trials=n_trials)
+    study.optimize(objective, n_trials=n_trials, n_jobs=1)
 
     print("Best trial:")
     trial = study.best_trial
@@ -91,6 +91,7 @@ def run_sweep(n_trials=10):
 
 
 if __name__ == "__main__":
+    print('Running optuna sweep...')
     study =  run_sweep()
     best_params = study.best_trial.params
     lightning_module = UncertaintyEstimator(
