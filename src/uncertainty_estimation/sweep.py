@@ -43,6 +43,7 @@ def objective(trial: optuna.Trial):
         optimizer_name=optimizer,
         estimated_loss_w=estimated_loss_w,
         reference_loss_w=reference_loss_w,
+        batch_size=batch_size
     )
     data_module = UncertaintyDatamodule(seed=SEED, batch_size=batch_size)
     logger = NeptuneLogger(api_key=neptune_key, project=project)
@@ -56,14 +57,7 @@ def objective(trial: optuna.Trial):
         gradient_clip_val=1.0,
         callbacks=[
             CB.LearningRateMonitor(logging_interval="epoch"),
-            CB.ModelCheckpoint(
-                dirpath="checkpoints",
-                filename="{epoch}_corr={val/corr:.2f}_loss={val/loss:.2f}",
-                monitor="val/corr",
-                mode="min",
-                auto_insert_metric_name=False,
-            ),
-            CB.EarlyStopping(monitor="val/loss", patience=5, verbose=True),
+            CB.EarlyStopping(monitor="val/loss", patience=3, verbose=True),
             pruner,
         ],
     )
@@ -71,7 +65,7 @@ def objective(trial: optuna.Trial):
     return trainer.callback_metrics['val/corr'].item()
 
 
-def run_sweep(n_trials=10):
+def run_sweep(n_trials=50):
     pruner = optuna.pruners.MedianPruner(n_warmup_steps=10)
     storage = optuna.storages.RDBStorage(
         url="sqlite:///optuna_sweep_db.sqlite",
@@ -99,6 +93,7 @@ if __name__ == "__main__":
         optimizer_name=best_params["optimizer"],
         estimated_loss_w=best_params["estimated loss weight"],
         reference_loss_w=best_params["reference loss weight"],
+        batch_size=best_params["batch size"]
     )
     data_module = UncertaintyDatamodule(seed=SEED, batch_size=best_params["batch size"])
     logger = NeptuneLogger(api_key=neptune_key, project=project)
@@ -113,7 +108,7 @@ if __name__ == "__main__":
             CB.LearningRateMonitor(logging_interval="epoch"),
             CB.ModelCheckpoint(
                 dirpath="checkpoints",
-                filename="{epoch}_corr={val/corr:.2f}_loss={val/loss:.2f}",
+                filename="best_{epoch}_corr={val/corr:.2f}_loss={val/loss:.2f}",
                 monitor="val/corr",
                 mode="min",
                 auto_insert_metric_name=False,

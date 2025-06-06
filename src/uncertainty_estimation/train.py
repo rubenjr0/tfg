@@ -64,6 +64,7 @@ def train():
         optimizer_name=cli.model.optimizer_name,
         estimated_loss_w=cli.model.estimated_loss_w,
         reference_loss_w=cli.model.reference_loss_w,
+        batch_size=cli.datamodule.batch_size
     )
     data_module = UncertaintyDatamodule(seed=SEED, batch_size=cli.datamodule.batch_size)
 

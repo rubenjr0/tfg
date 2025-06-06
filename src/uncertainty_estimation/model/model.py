@@ -20,6 +20,7 @@ class UncertaintyEstimator(LightningModule):
         estimated_loss_w: float = 1.0,
         reference_loss_w: float = 1e-3,
         curriculum_epochs: int = 15,
+        batch_size: int | None = None,
     ):
         super().__init__()
         self.save_hyperparameters(ignore="model")
@@ -31,6 +32,7 @@ class UncertaintyEstimator(LightningModule):
         self.estimated_loss_w = estimated_loss_w
         self.reference_loss_w = reference_loss_w
         self.curriculum_epochs = curriculum_epochs
+        self.batch_size = batch_size
         self.rerun_logging = getenv("USE_RERUN", "false").lower() == "true"
 
     def forward(self, rgb, depth, depth_edges, depth_laplacian):
