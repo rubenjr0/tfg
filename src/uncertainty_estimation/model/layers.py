@@ -2,13 +2,25 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-class SirenAct(nn.Module):
-    def __init__(self, w0: float = 30.0):
+
+class Swish(nn.Module):
+    def __init__(self, w0: float = 2.0):
         super().__init__()
         self.w0 = nn.Parameter(torch.tensor(w0))
-    
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return torch.sin(self.w0 * x)
+        return x * torch.sigmoid(self.w0 * x)
+
+
+class SirenAct(nn.Module):
+    def __init__(self, w0: float = 2.0):
+        super().__init__()
+        self.w0 = nn.Parameter(torch.tensor(w0))
+        self.b0 = nn.Parameter(torch.tensor(0.0))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return torch.sin(self.w0 * x + self.b0)
+
 
 def get_act(act: str):
     return (
@@ -22,6 +34,8 @@ def get_act(act: str):
         if act == "relu"
         else SirenAct()
         if act == "siren"
+        else Swish()
+        if act == "swish"
         else ValueError(f"Unknown activation function: {act}")
     )
 
@@ -118,17 +132,18 @@ class Encoder(nn.Module):
         self.norm1 = nn.BatchNorm2d(out_dims)
         self.conv2 = SeparableConv2d(out_dims, out_dims)
         self.norm2 = nn.BatchNorm2d(out_dims)
-        self.act = get_act(act)
+        self.act1 = get_act(act)
+        self.act2 = get_act(act)
         self.dropout = nn.Dropout2d(0.1)
         self.att = SpatialAttention(out_dims, act)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.conv1(x)
         x = self.norm1(x)
-        x = self.act(x)
+        x = self.act1(x)
         x = self.conv2(x)
         x = self.norm2(x)
-        x = self.act(x)
+        x = self.act2(x)
         x = self.dropout(x)
         x = self.att(x)
         return x

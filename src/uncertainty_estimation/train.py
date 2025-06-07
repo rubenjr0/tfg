@@ -39,6 +39,7 @@ def init_cli():
         save_config_kwargs={"overwrite": False},
         trainer_defaults={
             "max_epochs": 30,
+            "num_nodes": 1,
             "logger": {
                 "class_path": "lightning.pytorch.loggers.NeptuneLogger",
                 "init_args": {
@@ -47,9 +48,10 @@ def init_cli():
                 },
             },
             "precision": "16-mixed",
+            "log_every_n_steps": 10,
             "strategy": {
                 "class_path": "lightning.pytorch.strategies.DDPStrategy",
-                "init_args": {"find_unused_parameters": True},
+                "init_args": {"find_unused_parameters": True, "start_method": "spawn"},
             },
             "gradient_clip_val": 1.0,
         },
@@ -64,7 +66,7 @@ def train():
         optimizer_name=cli.model.optimizer_name,
         estimated_loss_w=cli.model.estimated_loss_w,
         reference_loss_w=cli.model.reference_loss_w,
-        batch_size=cli.datamodule.batch_size
+        batch_size=cli.datamodule.batch_size,
     )
     data_module = UncertaintyDatamodule(seed=SEED, batch_size=cli.datamodule.batch_size)
 

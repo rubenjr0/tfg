@@ -49,6 +49,13 @@ class ImageDepthDataset(Dataset):
                 T.Resize((256, 256)),
             ]
         )
+        self.transform2 = T.Compose(
+            [
+                T.ToImage(),
+                T.ToDtype(torch.float, scale=True),
+                T.Resize((256, 256)),
+            ]
+        )
 
     def _aug(self, image, do_hflip: bool, do_rotate: bool, rotate_angle: float):
         if do_hflip:
@@ -67,7 +74,7 @@ class ImageDepthDataset(Dataset):
         if np.isnan(image).any() or np.isnan(depth).any():
             return self.__getitem__((idx + 1) % len(self))
 
-        image = self.transform(image)
+        image = self.transform2(image)
 
         depth = self.transform(depth)
         depth_edges, depth_laplacian, _ = process_depth(depth.permute(1, 2, 0))

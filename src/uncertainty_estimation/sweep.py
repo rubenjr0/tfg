@@ -36,7 +36,9 @@ def objective(trial: optuna.Trial):
         )
     estimated_loss_w: float = trial.suggest_float("estimated loss weight", 0.5, 4.0)
     reference_loss_w: float = trial.suggest_float(
-        "reference loss weight", 1e-8, 0.5, log=True
+        "reference loss weight",
+        1e-8,
+        0.1,
     )
     print("Running trial with:")
     print("\t- Activation:", activation)
@@ -54,24 +56,27 @@ def objective(trial: optuna.Trial):
         batch_size=batch_size,
     )
     data_module = UncertaintyDatamodule(seed=SEED, batch_size=batch_size)
-    logger = NeptuneLogger(api_key=neptune_key, project=project, name=f"tfg-sweep-{trial.number}")
+    logger = NeptuneLogger(
+        api_key=neptune_key, project=project, name=f"tfg-sweep-{trial.number}"
+    )
     pruner = PyTorchLightningPruningCallback(trial, monitor="val/corr")
     callbacks = [
-            CB.LearningRateMonitor(logging_interval="epoch"),
-            CB.ModelCheckpoint(
-                dirpath="checkpoints",
-                filename="best_{epoch}_corr={val/corr:.2f}_loss={val/loss:.2f}",
-                monitor="val/corr",
-                mode="min",
-                auto_insert_metric_name=False,
-            ),
-            pruner,
-        ]
+        CB.LearningRateMonitor(logging_interval="epoch"),
+        CB.ModelCheckpoint(
+            dirpath="checkpoints",
+            filename="best_{epoch}_corr={val/corr:.2f}_loss={val/loss:.2f}",
+            monitor="val/corr",
+            mode="min",
+            auto_insert_metric_name=False,
+        ),
+        pruner,
+    ]
     if optimizer in ["adam", "adamw", "radam"]:
-        callbacks.append(CB.StochasticWeightAveraging(1e-3))
+        callbacks.append(CB.StochasticWeightAveraging(1e-4))
     trainer = L.Trainer(
         max_epochs=30,
         logger=logger,
+        num_nodes=1,
         precision="16-mixed",
         log_every_n_steps=10,
         strategy=DDPStrategy(find_unused_parameters=True, start_method="spawn"),

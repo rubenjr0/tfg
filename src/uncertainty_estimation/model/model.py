@@ -139,8 +139,6 @@ class UncertaintyEstimator(LightningModule):
                 tensor = tensor.transpose(1, 2, 0)
             return (tensor / (tensor.max() + 1e-6) * 255).clip(0, 255).astype(np.uint8)
 
-        if self.trainer.current_epoch % self.trainer.log_every_n_steps != 0:
-            return
         image = to_img(tensor_to_numpy(self.last_image[0]))
         depth = tensor_to_numpy(self.last_depth[0])
         obs = tensor_to_numpy(self.last_obs[0])
@@ -177,11 +175,17 @@ class UncertaintyEstimator(LightningModule):
             return opt
         else:
             if self.optimizer_name == "adam":
-                opt = torch.optim.Adam(self.parameters(), lr=self.learning_rate, weight_decay=1e-3)
+                opt = torch.optim.Adam(
+                    self.parameters(), lr=self.learning_rate, weight_decay=1e-3
+                )
             elif self.optimizer_name == "adamw":
-                opt = torch.optim.AdamW(self.parameters(), lr=self.learning_rate, weight_decay=1e-3)
+                opt = torch.optim.AdamW(
+                    self.parameters(), lr=self.learning_rate, weight_decay=1e-3
+                )
             elif self.optimizer_name == "radam":
-                opt = torch.optim.RAdam(self.parameters(), lr=self.learning_rate, weight_decay=1e-3)
+                opt = torch.optim.RAdam(
+                    self.parameters(), lr=self.learning_rate, weight_decay=1e-3
+                )
             elif self.optimizer_name == "prodigy":
                 opt = Prodigy(self.parameters(), lr=1.0, d_coef=0.1, weight_decay=1e-3)
             else:
@@ -190,4 +194,3 @@ class UncertaintyEstimator(LightningModule):
                 opt, T_max=self.trainer.estimated_stepping_batches
             )
             return [opt], [sched]
-         
