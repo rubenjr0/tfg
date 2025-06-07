@@ -149,13 +149,14 @@ class UncertaintyEstimator(LightningModule):
         def tensor_to_numpy(tensor: torch.Tensor) -> np.ndarray:
             return tensor.squeeze().detach().cpu().numpy()
 
-        def to_img(arr: np.ndarray, cmap: str = "turbo") -> np.ndarray:
+        def to_img(arr: np.ndarray, cmap: str = "viridis") -> np.ndarray:
+            arr = (arr * 255).clip(0, 255).astype(np.uint8)
             if arr.ndim == 2:
                 cf = colormaps[cmap]
                 arr = cf(arr)[..., :3]
             elif arr.ndim == 3:
                 arr = arr.transpose(1, 2, 0)
-            return (arr * 255).clip(0, 255).astype(np.uint8)
+            return arr
 
         # image = to_img(tensor_to_numpy(self.last_image[0]))
         image = to_img(tensor_to_numpy(self.last_image[0]))
