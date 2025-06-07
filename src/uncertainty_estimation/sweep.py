@@ -26,7 +26,7 @@ def objective(trial: optuna.Trial):
         "activation function", ["relu", "gelu", "mish", "siren", "swish"]
     )
     optimizer: str = trial.suggest_categorical(
-        "optimizer", ["adamw", "radam", "prodigy", "ranger"]
+        "optimizer", ["adamw", "radam", "prodigy"]
     )
     batch_size: int = trial.suggest_categorical("batch size", [16, 32])
     if optimizer == "prodigy":

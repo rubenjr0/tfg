@@ -6,7 +6,6 @@ import torch
 from lightning import LightningModule
 from neptune.types import File
 from prodigyopt import Prodigy
-from ranger21 import Ranger21
 from matplotlib import colormaps
 
 from .unet import UNet
@@ -169,36 +168,22 @@ class UncertaintyEstimator(LightningModule):
             logger.experiment["val/ref_var"].append(File.as_image(to_img(ref_var)))
 
     def configure_optimizers(self):
-        if self.optimizer_name == "ranger":
-            batches_per_epoch = (
-                self.trainer.estimated_stepping_batches / self.trainer.max_epochs
+        if self.optimizer_name == "adamw":
+            opt = torch.optim.AdamW(
+                self.parameters(), lr=self.learning_rate, weight_decay=1e-3
             )
-            opt = Ranger21(
-                self.parameters(),
-                lr=self.learning_rate,
-                use_madgrad=True,
-                num_epochs=self.trainer.max_epochs,
-                num_batches_per_epoch=batches_per_epoch,
-                weight_decay=1e-3,
+        elif self.optimizer_name == "radam":
+            opt = torch.optim.RAdam(
+                self.parameters(), lr=self.learning_rate, weight_decay=1e-3
             )
-            return opt
+        elif self.optimizer_name == "prodigy":
+            opt = Prodigy(self.parameters(), lr=1.0, d_coef=0.1, weight_decay=1e-3)
         else:
-            if self.optimizer_name == "adamw":
-                opt = torch.optim.AdamW(
-                    self.parameters(), lr=self.learning_rate, weight_decay=1e-3
-                )
-            elif self.optimizer_name == "radam":
-                opt = torch.optim.RAdam(
-                    self.parameters(), lr=self.learning_rate, weight_decay=1e-3
-                )
-            elif self.optimizer_name == "prodigy":
-                opt = Prodigy(self.parameters(), lr=1.0, d_coef=0.1, weight_decay=1e-3)
-            else:
-                return ValueError("No valid optimizer was specified")
-            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-                opt, T_max=self.trainer.estimated_stepping_batches
-            )
-            return {
-                "optimizer": opt,
-                "lr_scheduler": {"scheduler": scheduler, "interval": "step"},
-            }
+            return ValueError("No valid optimizer was specified")
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            opt, T_max=self.trainer.estimated_stepping_batches
+        )
+        return {
+            "optimizer": opt,
+            "lr_scheduler": {"scheduler": scheduler, "interval": "step"},
+        }
