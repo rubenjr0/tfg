@@ -15,6 +15,7 @@ class Residual(nn.Module):
 
 class ConvMixer(nn.Module):
     def __init__(self, h_dims: int, depth: int, act: str, kernel_size=9, patch_size=7):
+        super().__init__()
         self.rgb_encoder = L.Encoder(in_dims=3, out_dims=16, act=act)
         self.stack_encoder = L.Encoder(in_dims=3, out_dims=16, act=act)
         self.mixer = nn.Sequential(
