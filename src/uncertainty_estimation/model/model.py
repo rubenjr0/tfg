@@ -154,10 +154,11 @@ class UncertaintyEstimator(LightningModule):
                 tensor = tensor[:, :, np.newaxis]
             elif tensor.ndim == 3:
                 tensor = tensor.transpose(1, 2, 0)
-            return (tensor / (tensor.max() + 1e-6) * 255).clip(0, 255).astype(np.uint8)
+            return plt.imshow(tensor)
+            # return (tensor / (tensor.max() + 1e-6) * 255).clip(0, 255).astype(np.uint8)
 
         # image = to_img(tensor_to_numpy(self.last_image[0]))
-        image = plt.imshow(tensor_to_numpy(self.last_image[0]))
+        image = to_img(tensor_to_numpy(self.last_image[0]))
         depth = tensor_to_numpy(self.last_depth[0])
         obs = tensor_to_numpy(self.last_obs[0])
         est_var = tensor_to_numpy(self.last_est_var[0])
@@ -172,10 +173,10 @@ class UncertaintyEstimator(LightningModule):
         logger = self.logger
         if logger is not None:
             logger.experiment["val/image"].append(File.as_image(image))
-            logger.experiment["val/depth"].append(File.as_image(plt.imshow(depth)))
-            logger.experiment["val/est"].append(File.as_image(plt.imshow(obs)))
-            logger.experiment["val/est_var"].append(File.as_image(plt.imshow(est_var)))
-            logger.experiment["val/ref_var"].append(File.as_image(plt.imshow(ref_var)))
+            logger.experiment["val/depth"].append(File.as_image(to_img(depth)))
+            logger.experiment["val/est"].append(File.as_image(to_img(obs)))
+            logger.experiment["val/est_var"].append(File.as_image(to_img(est_var)))
+            logger.experiment["val/ref_var"].append(File.as_image(to_img(ref_var)))
 
     def configure_optimizers(self):
         if self.optimizer_name == "ranger":
