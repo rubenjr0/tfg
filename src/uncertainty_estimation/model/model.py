@@ -7,7 +7,7 @@ from lightning import LightningModule
 from neptune.types import File
 from prodigyopt import Prodigy
 from ranger21 import Ranger21
-from matplotlib import pyplot as plt
+from matplotlib import cm
 
 from .unet import UNet
 from .convmixer import ConvMixer
@@ -149,13 +149,17 @@ class UncertaintyEstimator(LightningModule):
         def tensor_to_numpy(tensor: torch.Tensor) -> np.ndarray:
             return tensor.squeeze().detach().cpu().numpy()
 
-        def to_img(tensor: np.ndarray) -> np.ndarray:
-            if tensor.ndim == 2:
-                tensor = tensor[:, :, np.newaxis]
-            elif tensor.ndim == 3:
-                tensor = tensor.transpose(1, 2, 0)
-            return plt.imshow(tensor)
-            # return (tensor / (tensor.max() + 1e-6) * 255).clip(0, 255).astype(np.uint8)
+        def to_img(arr: np.ndarray, cmap: str | None = None) -> np.ndarray:
+            if arr.ndim == 2:
+                arr = arr[:, :, np.newaxis]
+            elif arr.ndim == 3:
+                arr = arr.transpose(1, 2, 0)
+            if cmap is None:
+                arr = arr / (arr.max() + 1e-6)
+            else:
+                cmap = cm(cmap)
+                arr = cmap(arr)
+            return (arr * 255).clip(0, 255).astype(np.uint8)
 
         # image = to_img(tensor_to_numpy(self.last_image[0]))
         image = to_img(tensor_to_numpy(self.last_image[0]))
@@ -173,10 +177,14 @@ class UncertaintyEstimator(LightningModule):
         logger = self.logger
         if logger is not None:
             logger.experiment["val/image"].append(File.as_image(image))
-            logger.experiment["val/depth"].append(File.as_image(to_img(depth)))
-            logger.experiment["val/est"].append(File.as_image(to_img(obs)))
-            logger.experiment["val/est_var"].append(File.as_image(to_img(est_var)))
-            logger.experiment["val/ref_var"].append(File.as_image(to_img(ref_var)))
+            logger.experiment["val/depth"].append(File.as_image(to_img(depth, "turbo")))
+            logger.experiment["val/est"].append(File.as_image(to_img(obs, "turbo")))
+            logger.experiment["val/est_var"].append(
+                File.as_image(to_img(est_var, "turbo"))
+            )
+            logger.experiment["val/ref_var"].append(
+                File.as_image(to_img(ref_var, "turbo"))
+            )
 
     def configure_optimizers(self):
         if self.optimizer_name == "ranger":
