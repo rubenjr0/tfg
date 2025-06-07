@@ -1,5 +1,7 @@
 import torch.nn as nn
 
+from .layers import get_act
+
 
 class Residual(nn.Module):
     def __init__(self, fn):
@@ -10,12 +12,10 @@ class Residual(nn.Module):
         return self.fn(x) + x
 
 
-def ConvMixer(
-    in_dims: int, h_dims: int, out_dims: int, depth: int, kernel_size=9, patch_size=7
-):
+def ConvMixer(h_dims: int, depth: int, act: str, kernel_size=9, patch_size=7):
     return nn.Sequential(
-        nn.Conv2d(in_dims, h_dims, kernel_size=patch_size, stride=patch_size),
-        nn.GELU(),
+        nn.Conv2d(32, h_dims, kernel_size=patch_size, stride=patch_size),
+        get_act(act),
         nn.BatchNorm2d(h_dims),
         *[
             nn.Sequential(
@@ -24,15 +24,15 @@ def ConvMixer(
                         nn.Conv2d(
                             h_dims, h_dims, kernel_size, groups=h_dims, padding="same"
                         ),
-                        nn.GELU(),
+                        get_act(act),
                         nn.BatchNorm2d(h_dims),
                     )
                 ),
                 nn.Conv2d(h_dims, h_dims, kernel_size=1),
-                nn.GELU(),
+                get_act(act),
                 nn.BatchNorm2d(h_dims),
             )
             for _ in range(depth)
         ],
-        nn.Conv2d(h_dims, out_dims, kernel_size=1),
+        nn.Conv2d(h_dims, 1, kernel_size=1),
     )

@@ -21,6 +21,7 @@ project = getenv("NEPTUNE_PROJECT")
 
 
 def objective(trial: optuna.Trial):
+    arch: str = trial.suggest_categorical("architecture", ["unet", "convmix"])
     activation: str = trial.suggest_categorical(
         "activation function", ["relu", "silu", "gelu", "mish", "siren", "swish"]
     )
@@ -34,7 +35,7 @@ def objective(trial: optuna.Trial):
         learning_rate: float = trial.suggest_float(
             "learning rate", 1e-5, 1e-3, log=True
         )
-    estimated_loss_w: float = trial.suggest_float("estimated loss weight", 0.5, 4.0)
+    estimated_loss_w: float = trial.suggest_float("estimated loss weight", 0.5, 2.0)
     reference_loss_w: float = trial.suggest_float(
         "reference loss weight",
         1e-8,
@@ -49,11 +50,13 @@ def objective(trial: optuna.Trial):
     print("\t- Reference loss weight:", reference_loss_w)
     lightning_module = UncertaintyEstimator(
         model=None,
+        arch=arch,
         activation_name=activation,
         optimizer_name=optimizer,
         estimated_loss_w=estimated_loss_w,
         reference_loss_w=reference_loss_w,
         batch_size=batch_size,
+        learning_rate=learning_rate,
     )
     data_module = UncertaintyDatamodule(seed=SEED, batch_size=batch_size)
     logger = NeptuneLogger(

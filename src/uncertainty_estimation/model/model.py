@@ -7,26 +7,33 @@ from lightning import LightningModule
 from neptune.types import File
 from prodigyopt import Prodigy
 from ranger21 import Ranger21
+from matplotlib import pyplot as plt
 
 from .unet import UNet
+from .convmixer import ConvMixer
 
 
 class UncertaintyEstimator(LightningModule):
     def __init__(
         self,
-        model: None | UNet = None,
+        model: None | UNet | ConvMixer = None,
+        arch: str = None,
         activation_name: str = "relu",
         optimizer_name: str = "adamw",
         estimated_loss_w: float = 1.0,
         reference_loss_w: float = 1e-3,
-        curriculum_epochs: int = 15,
+        curriculum_epochs: float = 0.6,
         learning_rate: float = 1e-4,
         batch_size: int | None = None,
     ):
         super().__init__()
         if model is None:
-            model = UNet(activation_name)
+            if arch == "unet":
+                model = UNet(activation_name)
+            else:
+                model = ConvMixer(64, 12, activation_name)
         self.model = model
+        self.arch = arch
         self.activation_name = activation_name
         self.optimizer_name = optimizer_name
         self.estimated_loss_w = estimated_loss_w
@@ -73,7 +80,11 @@ class UncertaintyEstimator(LightningModule):
         # Ground truth depth variance loss (should be close to zero)
         reference_nll_loss = self.nll_loss(reference_variance, depth, depth)
         reference_loss_w = (
-            min(1.0, self.trainer.current_epoch / self.curriculum_epochs)
+            min(
+                1.0,
+                self.trainer.current_epoch
+                / (self.trainer.max_epochs * self.curriculum_epochs),
+            )
             * self.reference_loss_w
             / image.size(0)
         )
@@ -106,7 +117,10 @@ class UncertaintyEstimator(LightningModule):
         loss, image, observation, estimated_variance, reference_variance, depth = (
             self.step("val", batch)
         )
-        corr = torch.mean((depth - observation) ** 2 / (estimated_variance + 1e-6))
+        corr = torch.mean(
+            (depth - observation) ** 2 / (estimated_variance + 1e-6)
+            + reference_variance
+        )
         if self.rerun_logging:
             rr.log("val/corr", rr.Scalars(corr.detach().cpu()))
         self.log("val/corr", corr, sync_dist=True)
@@ -122,7 +136,10 @@ class UncertaintyEstimator(LightningModule):
         loss, image, observation, estimated_variance, reference_variance, depth = (
             self.step("test", batch)
         )
-        corr = torch.mean((depth - observation) ** 2 / (estimated_variance + 1e-6))
+        corr = torch.mean(
+            (depth - observation) ** 2 / (estimated_variance + 1e-6)
+            + reference_variance
+        )
         if self.rerun_logging:
             rr.log("test/corr", rr.Scalars(corr.detach().cpu()))
         self.log("test/corr", corr, sync_dist=True)
@@ -139,7 +156,8 @@ class UncertaintyEstimator(LightningModule):
                 tensor = tensor.transpose(1, 2, 0)
             return (tensor / (tensor.max() + 1e-6) * 255).clip(0, 255).astype(np.uint8)
 
-        image = to_img(tensor_to_numpy(self.last_image[0]))
+        # image = to_img(tensor_to_numpy(self.last_image[0]))
+        image = plt.imshow(tensor_to_numpy(self.last_image[0]))
         depth = tensor_to_numpy(self.last_depth[0])
         obs = tensor_to_numpy(self.last_obs[0])
         est_var = tensor_to_numpy(self.last_est_var[0])
@@ -154,10 +172,10 @@ class UncertaintyEstimator(LightningModule):
         logger = self.logger
         if logger is not None:
             logger.experiment["val/image"].append(File.as_image(image))
-            logger.experiment["val/depth"].append(File.as_image(to_img(depth)))
-            logger.experiment["val/est"].append(File.as_image(to_img(obs)))
-            logger.experiment["val/est_var"].append(File.as_image(to_img(est_var)))
-            logger.experiment["val/ref_var"].append(File.as_image(to_img(ref_var)))
+            logger.experiment["val/depth"].append(File.as_image(plt.imshow(depth)))
+            logger.experiment["val/est"].append(File.as_image(plt.imshow(obs)))
+            logger.experiment["val/est_var"].append(File.as_image(plt.imshow(est_var)))
+            logger.experiment["val/ref_var"].append(File.as_image(plt.imshow(ref_var)))
 
     def configure_optimizers(self):
         if self.optimizer_name == "ranger":
