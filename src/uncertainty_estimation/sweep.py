@@ -22,7 +22,7 @@ project = getenv("NEPTUNE_PROJECT")
 
 def objective(trial: optuna.Trial):
     activation: str = trial.suggest_categorical(
-        "activation function", ["relu", "silu", "gelu", "mish", "siren"]
+        "activation function", ["relu", "silu", "gelu", "mish", "siren", "swish"]
     )
     optimizer: str = trial.suggest_categorical(
         "optimizer", ["adam", "adamw", "radam", "prodigy", "ranger"]
