@@ -42,6 +42,7 @@ def objective(trial: optuna.Trial):
         0.1,
     )
     print("Running trial with:")
+    print("\t- Architecture:", arch)
     print("\t- Activation:", activation)
     print("\t- Optimizer:", optimizer)
     print("\t- Batch Size:", batch_size)
