@@ -11,6 +11,7 @@ from PIL import Image
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset
 from torchvision.transforms import v2 as T
+from matplotlib import colormaps
 
 from uncertainty_estimation.utils import process_depth
 
@@ -49,13 +50,6 @@ class ImageDepthDataset(Dataset):
                 T.Resize((256, 256)),
             ]
         )
-        self.transform2 = T.Compose(
-            [
-                T.ToImage(),
-                T.ToDtype(torch.float, scale=True),
-                T.Resize((256, 256)),
-            ]
-        )
 
     def _aug(self, image, do_hflip: bool, do_rotate: bool, rotate_angle: float):
         if do_hflip:
@@ -74,7 +68,7 @@ class ImageDepthDataset(Dataset):
         if np.isnan(image).any() or np.isnan(depth).any():
             return self.__getitem__((idx + 1) % len(self))
 
-        image = self.transform2(image)
+        image = self.transform(image)
 
         depth = self.transform(depth)
         depth_edges, depth_laplacian, _ = process_depth(depth.permute(1, 2, 0))
@@ -127,8 +121,6 @@ class UncertaintyDatamodule(LightningDataModule):
         self.train_folders, self.val_folders = train_test_split(
             train_folders, train_size=0.8, random_state=seed
         )
-
-    def setup(self, stage: str):
         self.train_data = ImageDepthDataset(
             root=self.train_dir, folders=self.train_folders
         )
@@ -161,3 +153,17 @@ class UncertaintyDatamodule(LightningDataModule):
             num_workers=12,
             persistent_workers=True,
         )
+
+
+if __name__ == "__main__":
+    ds = ImageDepthDataset()
+    sample = ds[0]
+    depth = sample["depth"]
+    est = sample["est"]
+    cmap = colormaps["turbo"]
+    print("Depth:", depth.shape, depth.mean(), depth.std())
+    print("Est:", est.shape, est.mean(), est.std())
+    depth = cmap(depth[0])[..., :3]
+    est = cmap(est[0])[..., :3]
+    print("Colored Depth:", depth.shape, depth.mean(), depth.std())
+    print("Colored Est:", est.shape, est.mean(), est.std())

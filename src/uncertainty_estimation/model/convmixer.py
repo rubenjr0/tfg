@@ -43,7 +43,7 @@ class ConvMixer(nn.Module):
                     nn.BatchNorm2d(h_dims),
                 )
                 for _ in range(depth)
-            ]
+            ],
         )
         self.up1 = L.UpscalingBlock(h_dims, h_dims, act)
         self.skip1 = L.SeparableConv2d(h_dims, 1)
@@ -66,21 +66,11 @@ class ConvMixer(nn.Module):
         s2 = self.skip2(up2)
         up3 = self.up3(up2)
         s3 = self.skip3(up3)
-        s3= F.interpolate(
-            s3, target_size, mode="bilinear", align_corners=False
-        )
-        s2= F.interpolate(
-            s2, target_size, mode="bilinear", align_corners=False
-        )
-        s1= F.interpolate(
-            s1, target_size, mode="bilinear", align_corners=False
-        )
+        s3 = F.interpolate(s3, target_size, mode="bilinear", align_corners=False)
+        s2 = F.interpolate(s2, target_size, mode="bilinear", align_corners=False)
+        s1 = F.interpolate(s1, target_size, mode="bilinear", align_corners=False)
         weights = F.softmax(self.scale_weights, dim=0)
-        out = (
-            weights[0] * s1
-            + weights[1] * s2
-            + weights[2] * s3
-        )
+        out = weights[0] * s1 + weights[1] * s2 + weights[2] * s3
         return out.clamp(-6, 6).exp()
 
 
