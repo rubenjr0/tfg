@@ -150,7 +150,7 @@ class UncertaintyEstimator(LightningModule):
             return tensor.squeeze().detach().cpu().numpy()
 
         def to_img(arr: np.ndarray, cmap: str = "viridis") -> np.ndarray:
-            arr = (arr * 255).clip(0, 255).astype(np.uint8)
+            arr = (arr / arr.max() * 255).clip(0, 255).astype(np.uint8)
             if arr.ndim == 2:
                 cf = colormaps[cmap]
                 arr = cf(arr)[..., :3]
