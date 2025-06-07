@@ -59,20 +59,6 @@ def objective(trial: optuna.Trial):
     logger = NeptuneLogger(
         api_key=neptune_key, project=project, name=f"tfg-sweep-{trial.number}"
     )
-    pruner = PyTorchLightningPruningCallback(trial, monitor="val/corr")
-    callbacks = [
-        CB.LearningRateMonitor(logging_interval="epoch"),
-        CB.ModelCheckpoint(
-            dirpath="checkpoints",
-            filename="best_{epoch}_corr={val/corr:.2f}_loss={val/loss:.2f}",
-            monitor="val/corr",
-            mode="min",
-            auto_insert_metric_name=False,
-        ),
-        pruner,
-    ]
-    if optimizer in ["adam", "adamw", "radam"]:
-        callbacks.append(CB.StochasticWeightAveraging(1e-4))
     trainer = L.Trainer(
         max_epochs=30,
         logger=logger,
@@ -81,7 +67,17 @@ def objective(trial: optuna.Trial):
         log_every_n_steps=10,
         strategy=DDPStrategy(find_unused_parameters=True, start_method="spawn"),
         gradient_clip_val=1.0,
-        callbacks=callbacks,
+        callbacks=[
+            CB.LearningRateMonitor(logging_interval="epoch"),
+            CB.ModelCheckpoint(
+                dirpath="checkpoints",
+                filename="best_{epoch}_corr={val/corr:.2f}_loss={val/loss:.2f}",
+                monitor="val/corr",
+                mode="min",
+                auto_insert_metric_name=False,
+            ),
+            PyTorchLightningPruningCallback(trial, monitor="val/corr"),
+        ],
     )
     trainer.fit(lightning_module, data_module)
     result = trainer.test(lightning_module, data_module)
