@@ -22,7 +22,6 @@ class UncertaintyEstimator(LightningModule):
         optimizer_name: str = "adamw",
         estimated_loss_w: float = 1.0,
         reference_loss_w: float = 1e-3,
-        curriculum_epochs: float = 0.6,
         learning_rate: float = 1e-4,
         batch_size: int | None = None,
     ):
@@ -38,7 +37,6 @@ class UncertaintyEstimator(LightningModule):
         self.optimizer_name = optimizer_name
         self.estimated_loss_w = estimated_loss_w
         self.reference_loss_w = reference_loss_w
-        self.curriculum_epochs = curriculum_epochs
         self.learning_rate = learning_rate
         self.batch_size = batch_size
         self.save_hyperparameters(ignore="model")
@@ -79,19 +77,10 @@ class UncertaintyEstimator(LightningModule):
 
         # Ground truth depth variance loss (should be close to zero)
         reference_nll_loss = self.nll_loss(reference_variance, depth, depth)
-        reference_loss_w = (
-            min(
-                1.0,
-                self.trainer.current_epoch
-                / (self.trainer.max_epochs * self.curriculum_epochs),
-            )
-            * self.reference_loss_w
-            / image.size(0)
-        )
 
         loss = (
             self.estimated_loss_w * estimated_nll_loss
-            + reference_loss_w * reference_nll_loss
+            + self.reference_loss_w * reference_nll_loss / image.size(0)
         )
 
         if self.rerun_logging:
@@ -194,11 +183,7 @@ class UncertaintyEstimator(LightningModule):
             )
             return opt
         else:
-            if self.optimizer_name == "adam":
-                opt = torch.optim.Adam(
-                    self.parameters(), lr=self.learning_rate, weight_decay=1e-3
-                )
-            elif self.optimizer_name == "adamw":
+            if self.optimizer_name == "adamw":
                 opt = torch.optim.AdamW(
                     self.parameters(), lr=self.learning_rate, weight_decay=1e-3
                 )

@@ -26,8 +26,6 @@ def get_act(act: str):
     return (
         nn.GELU()
         if act == "gelu"
-        else nn.SiLU()
-        if act == "silu"
         else nn.Mish()
         if act == "mish"
         else nn.ReLU()

@@ -23,10 +23,10 @@ project = getenv("NEPTUNE_PROJECT")
 def objective(trial: optuna.Trial):
     arch: str = trial.suggest_categorical("architecture", ["unet", "convmix"])
     activation: str = trial.suggest_categorical(
-        "activation function", ["relu", "silu", "gelu", "mish", "siren", "swish"]
+        "activation function", ["relu", "gelu", "mish", "siren", "swish"]
     )
     optimizer: str = trial.suggest_categorical(
-        "optimizer", ["adam", "adamw", "radam", "prodigy", "ranger"]
+        "optimizer", ["adamw", "radam", "prodigy", "ranger"]
     )
     batch_size: int = trial.suggest_categorical("batch size", [16, 32])
     if optimizer == "prodigy":
