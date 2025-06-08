@@ -145,6 +145,15 @@ wheels = [
 ]
 
 [[package]]
+name = "bottle"
+version = "0.13.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f5/3b/efa9540213c71be3500e14592c5823bd3f9ddd881d306e01b5dd490ddab5/bottle-0.13.3.tar.gz", hash = "sha256:1c23aeb30aa8a13f39c60c0da494530ddd5de3da235bc431b818a50d999de49f", size = 98555, upload-time = "2025-04-21T11:48:36.107Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7b/b1/a6d4ef30ebfa0f62aedd437d81130075afc32266f7f6baf2cddf4b41ac2a/bottle-0.13.3-py2.py3-none-any.whl", hash = "sha256:551709073d750d2e88ade05915f0d5dbbbcb8e1d82573fbe85a0635eb842ab07", size = 104151, upload-time = "2025-04-21T11:48:34.257Z" },
+]
+
+[[package]]
 name = "bravado"
 version = "11.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1209,6 +1218,21 @@ wheels = [
 ]
 
 [[package]]
+name = "optuna-dashboard"
+version = "0.18.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "bottle" },
+    { name = "optuna" },
+    { name = "packaging" },
+    { name = "scikit-learn" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ab/ef/cdfd144458e1598a5b67e291b9947032b72f095d76b2f5bb3ad0e37fcdaa/optuna_dashboard-0.18.0.tar.gz", hash = "sha256:be77394279efe2fb45ee63e5fe5622007ef0f06d47117e9b9c36e67716777dfd", size = 8335304, upload-time = "2025-03-26T09:11:43.078Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fa/4a/3c55b8c49d0d096a8e97674fd505aaf38f9f3c743b2f89b8ca198210eb1f/optuna_dashboard-0.18.0-py3-none-any.whl", hash = "sha256:49f64d5750838fa59bceedcebf3359c1758eb74d1aa0aaab990bd9ce9ffb0638", size = 8356100, upload-time = "2025-03-26T09:11:40.3Z" },
+]
+
+[[package]]
 name = "optuna-integration"
 version = "4.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2121,7 +2145,7 @@ wheels = [
 [[package]]
 name = "uncertainty-estimation"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "depth-pro" },
     { name = "h5py" },
@@ -2143,6 +2167,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "optuna-dashboard" },
     { name = "pytest" },
     { name = "ruff" },
 ]
@@ -2169,6 +2194,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "optuna-dashboard", specifier = ">=0.18.0" },
     { name = "pytest", specifier = ">=8.3.5" },
     { name = "ruff", specifier = ">=0.11.2" },
 ]

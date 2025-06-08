@@ -25,3 +25,4 @@ checkpoints/
 *.png
 lightning_logs/
 *.sqlite
+*.envrc

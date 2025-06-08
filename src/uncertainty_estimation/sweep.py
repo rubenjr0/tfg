@@ -7,7 +7,6 @@ import optuna
 from dotenv import load_dotenv
 from lightning.pytorch import callbacks as CB
 from lightning.pytorch.loggers import NeptuneLogger
-from lightning.pytorch.strategies import DDPStrategy
 from optuna_integration import PyTorchLightningPruningCallback
 
 from uncertainty_estimation.data import UncertaintyDatamodule
@@ -21,16 +20,17 @@ project = getenv("NEPTUNE_PROJECT")
 
 
 def objective(trial: optuna.Trial):
-    arch: str = trial.suggest_categorical("architecture", ["unet", "convmix"])
     activation: str = trial.suggest_categorical(
         "activation function", ["relu", "gelu", "mish", "siren", "swish"]
     )
     optimizer: str = trial.suggest_categorical(
         "optimizer", ["adamw", "radam", "prodigy"]
     )
-    batch_size: int = trial.suggest_categorical("batch size", [16, 32])
+    # batch_size: int = trial.suggest_categorical("batch size", [16, 32])
+    batch_size: int = 16
     if optimizer == "prodigy":
         learning_rate = 1.0
+        trial.set_user_attr("learning rate", learning_rate)
     else:
         learning_rate: float = trial.suggest_float(
             "learning rate", 1e-5, 1e-3, log=True
@@ -42,7 +42,6 @@ def objective(trial: optuna.Trial):
         0.1,
     )
     print("Running trial with:")
-    print("\t- Architecture:", arch)
     print("\t- Activation:", activation)
     print("\t- Optimizer:", optimizer)
     print("\t- Batch Size:", batch_size)
@@ -51,7 +50,6 @@ def objective(trial: optuna.Trial):
     print("\t- Reference loss weight:", reference_loss_w)
     lightning_module = UncertaintyEstimator(
         model=None,
-        arch=arch,
         activation_name=activation,
         optimizer_name=optimizer,
         estimated_loss_w=estimated_loss_w,
@@ -64,17 +62,16 @@ def objective(trial: optuna.Trial):
         api_key=neptune_key, project=project, name=f"tfg-sweep-{trial.number}"
     )
     trainer = L.Trainer(
-        max_epochs=30,
+        max_epochs=10,
         logger=logger,
-        num_nodes=1,
+        devices=1,
         precision="16-mixed",
         log_every_n_steps=10,
-        strategy=DDPStrategy(find_unused_parameters=True, start_method="spawn"),
         gradient_clip_val=1.0,
         callbacks=[
             CB.LearningRateMonitor(logging_interval="epoch"),
             CB.ModelCheckpoint(
-                dirpath="checkpoints",
+                dirpath=f"checkpoints/trial_{trial.number}",
                 filename="best_{epoch}_corr={val/corr:.2f}_loss={val/loss:.2f}",
                 monitor="val/corr",
                 mode="min",
@@ -84,16 +81,23 @@ def objective(trial: optuna.Trial):
         ],
     )
     trainer.fit(lightning_module, data_module)
-    result = trainer.test(lightning_module, data_module)
-    return result[0]["test/corr"]
+    logger.finalize("success")
+    return trainer.callback_metrics["val/corr"]
 
 
-def run_sweep(n_trials=50):
-    pruner = optuna.pruners.MedianPruner(n_warmup_steps=4)
+def run_sweep(n_trials=100):
+    sampler = optuna.samplers.GPSampler(seed=SEED)
+    pruner = optuna.pruners.SuccessiveHalvingPruner()
     storage = optuna.storages.RDBStorage(
         url="sqlite:///optuna_sweep_db.sqlite",
     )
-    study = optuna.create_study(direction="minimize", storage=storage, pruner=pruner)
+    study = optuna.create_study(
+        study_name="uncertainty_sweep_1",
+        direction="minimize",
+        storage=storage,
+        sampler=sampler,
+        pruner=pruner,
+    )
     study.optimize(objective, n_trials=n_trials, n_jobs=1)
 
     print("Best trial:")

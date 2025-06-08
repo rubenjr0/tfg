@@ -143,6 +143,7 @@ class UncertaintyDatamodule(LightningDataModule):
             shuffle=False,
             num_workers=12,
             persistent_workers=True,
+            drop_last=True,
         )
 
     def test_dataloader(self):
@@ -152,6 +153,7 @@ class UncertaintyDatamodule(LightningDataModule):
             shuffle=False,
             num_workers=12,
             persistent_workers=True,
+            drop_last=True,
         )
 
 

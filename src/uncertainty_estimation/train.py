@@ -39,7 +39,7 @@ def init_cli():
         save_config_kwargs={"overwrite": False},
         trainer_defaults={
             "max_epochs": 30,
-            "num_nodes": 1,
+            "devices": 1,
             "logger": {
                 "class_path": "lightning.pytorch.loggers.NeptuneLogger",
                 "init_args": {
@@ -49,10 +49,6 @@ def init_cli():
             },
             "precision": "16-mixed",
             "log_every_n_steps": 10,
-            "strategy": {
-                "class_path": "lightning.pytorch.strategies.DDPStrategy",
-                "init_args": {"find_unused_parameters": True, "start_method": "spawn"},
-            },
             "gradient_clip_val": 1.0,
         },
     )

@@ -9,14 +9,12 @@ from prodigyopt import Prodigy
 from matplotlib import colormaps
 
 from .unet import UNet
-from .convmixer import ConvMixer
 
 
 class UncertaintyEstimator(LightningModule):
     def __init__(
         self,
-        model: None | UNet | ConvMixer = None,
-        arch: str = None,
+        model: None | UNet = None,
         activation_name: str = "relu",
         optimizer_name: str = "adamw",
         estimated_loss_w: float = 1.0,
@@ -26,12 +24,8 @@ class UncertaintyEstimator(LightningModule):
     ):
         super().__init__()
         if model is None:
-            if arch == "unet":
-                model = UNet(activation_name)
-            else:
-                model = ConvMixer(64, 12, activation_name)
+            model = UNet(activation_name)
         self.model = model
-        self.arch = arch
         self.activation_name = activation_name
         self.optimizer_name = optimizer_name
         self.estimated_loss_w = estimated_loss_w
